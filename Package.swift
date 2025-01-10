@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "MARS",
     platforms: [
-        .iOS(.v13) // Seleziona la piattaforma appropriata
+        .iOS(.v13)
     ],
     products: [
         .library(
@@ -14,7 +14,6 @@ let package = Package(
             targets: ["MARS"]),
     ],
     dependencies: [
-        // Aggiungi il pacchetto swift-numerics
         .package(url: "https://github.com/apple/swift-numerics.git", .upToNextMajor(from: "1.0.2")),
     ],
     targets: [

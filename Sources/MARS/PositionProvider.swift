@@ -141,6 +141,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             
             self.switchingRoom = (newTrackingState != "Normal")
             
+            checkSwitchRoom()
         default:
             break
         }
@@ -388,88 +389,6 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         let hitResults = node.hitTestWithSegment(from: rayOrigin, to: rayEnd, options: hitTestOptions)
         return !hitResults.isEmpty
     }
-
-    func findFloorBelow(point: SCNVector3, floors: [SCNNode]) -> SCNNode? {
-        
-        // Configura le opzioni per l'hit-test
-        let hitTestOptions: [String: Any] = [
-            SCNHitTestOption.backFaceCulling.rawValue: false,  // Ignora il culling delle facce posteriori
-            SCNHitTestOption.boundingBoxOnly.rawValue: false, // Usa la geometria effettiva
-            SCNHitTestOption.ignoreHiddenNodes.rawValue: false // Non ignora i nodi nascosti
-        ]
-
-        // Lancia un raycast verso il basso per ogni pavimento
-        for floor in floors {
-            // Posizione del dispositivo nella scena
-            print("Device position in scene: \(point)")
-
-            // Posizione del nodo in cui si sta facendo il test
-            print("Testing floor node position: \(floor.position)")
-
-            // Definizione del segmento di hit test
-            let rayStart = point
-            let rayEnd = SCNVector3(point.x, point.y - 10, point.z)
-            addDebugMarker(at: rayStart, color: .green, scene: self.scnFloorView.scnView.scene!)
-            addDebugMarker(at: rayEnd, color: .red, scene: self.scnFloorView.scnView.scene!)
-            // Stampa la posizione del raggio di partenza e di fine
-            print("Ray start position: \(rayStart)")
-            print("Ray end position: \(rayEnd)")
-
-            // Esegui l'hit test
-            let hitResults = floor.hitTestWithSegment(from: rayStart, to: rayEnd, options: hitTestOptions)
-            
-            // Disegna il raggio per la visualizzazione nella scena
-            drawRay(from: rayStart, to: rayEnd, in: self.scnFloorView.scnView.scene!)
-
-            if let closestHit = hitResults.first {
-                // Distanza tra il punto del dispositivo e il punto di intersezione
-                let distance = closestHit.worldCoordinates.distance(to: point)
-
-                print("Hit detected on node: \(closestHit.node.name ?? "Unnamed Node")")
-                print("Hit world coordinates: \(closestHit.worldCoordinates)")
-                print("Distance to hit: \(distance)")
-
-                return floor
-            } else {
-                print("No hit detected for this floor.")
-            }
-        }
-
-
-        print("No floors were intersected.")
-        return nil
-    }
-    
-    func drawRay(from start: SCNVector3, to end: SCNVector3, in scene: SCNScene, color: UIColor = .blue) {
-        // Calcola la direzione (vettore) tra start e end
-        let vector = SCNVector3(end.x - start.x, end.y - start.y, end.z - start.z)
-        
-        // Calcola la lunghezza del vettore
-        let length = sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z)
-        
-        // Crea un cilindro con la lunghezza calcolata
-        let cylinder = SCNCylinder(radius: 0.01, height: CGFloat(length))
-        cylinder.firstMaterial?.diffuse.contents = color
-
-        // Crea un nodo per il cilindro
-        let rayNode = SCNNode(geometry: cylinder)
-        
-        // Posiziona il cilindro al punto medio tra start e end
-        rayNode.position = SCNVector3(
-            (start.x + end.x) / 2,
-            (start.y + end.y) / 2,
-            (start.z + end.z) / 2
-        )
-        
-        // Calcola la rotazione del cilindro per allinearlo al vettore
-        let direction = vector.normalized()
-        let up = SCNVector3(0, 1, 0) // L'asse Y locale del cilindro
-        let rotation = SCNVector4.rotation(from: up, to: direction)
-        rayNode.rotation = rotation
-
-        // Aggiungi il cilindro alla scena
-        scene.rootNode.addChildNode(rayNode)
-    }
     
     func addDebugMarker(at position: SCNVector3, color: UIColor, scene: SCNScene) {
         let sphere = SCNSphere(radius: 0.05)
@@ -535,3 +454,87 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     }
     
 }
+
+//
+//
+//func findFloorBelow(point: SCNVector3, floors: [SCNNode]) -> SCNNode? {
+//    
+//    // Configura le opzioni per l'hit-test
+//    let hitTestOptions: [String: Any] = [
+//        SCNHitTestOption.backFaceCulling.rawValue: false,  // Ignora il culling delle facce posteriori
+//        SCNHitTestOption.boundingBoxOnly.rawValue: false, // Usa la geometria effettiva
+//        SCNHitTestOption.ignoreHiddenNodes.rawValue: false // Non ignora i nodi nascosti
+//    ]
+//
+//    // Lancia un raycast verso il basso per ogni pavimento
+//    for floor in floors {
+//        // Posizione del dispositivo nella scena
+//        print("Device position in scene: \(point)")
+//
+//        // Posizione del nodo in cui si sta facendo il test
+//        print("Testing floor node position: \(floor.position)")
+//
+//        // Definizione del segmento di hit test
+//        let rayStart = point
+//        let rayEnd = SCNVector3(point.x, point.y - 10, point.z)
+//        addDebugMarker(at: rayStart, color: .green, scene: self.scnFloorView.scnView.scene!)
+//        addDebugMarker(at: rayEnd, color: .red, scene: self.scnFloorView.scnView.scene!)
+//        // Stampa la posizione del raggio di partenza e di fine
+//        print("Ray start position: \(rayStart)")
+//        print("Ray end position: \(rayEnd)")
+//
+//        // Esegui l'hit test
+//        let hitResults = floor.hitTestWithSegment(from: rayStart, to: rayEnd, options: hitTestOptions)
+//        
+//        // Disegna il raggio per la visualizzazione nella scena
+//        drawRay(from: rayStart, to: rayEnd, in: self.scnFloorView.scnView.scene!)
+//
+//        if let closestHit = hitResults.first {
+//            // Distanza tra il punto del dispositivo e il punto di intersezione
+//            let distance = closestHit.worldCoordinates.distance(to: point)
+//
+//            print("Hit detected on node: \(closestHit.node.name ?? "Unnamed Node")")
+//            print("Hit world coordinates: \(closestHit.worldCoordinates)")
+//            print("Distance to hit: \(distance)")
+//
+//            return floor
+//        } else {
+//            print("No hit detected for this floor.")
+//        }
+//    }
+//
+//
+//    print("No floors were intersected.")
+//    return nil
+//}
+//
+//func drawRay(from start: SCNVector3, to end: SCNVector3, in scene: SCNScene, color: UIColor = .blue) {
+//    // Calcola la direzione (vettore) tra start e end
+//    let vector = SCNVector3(end.x - start.x, end.y - start.y, end.z - start.z)
+//    
+//    // Calcola la lunghezza del vettore
+//    let length = sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z)
+//    
+//    // Crea un cilindro con la lunghezza calcolata
+//    let cylinder = SCNCylinder(radius: 0.01, height: CGFloat(length))
+//    cylinder.firstMaterial?.diffuse.contents = color
+//
+//    // Crea un nodo per il cilindro
+//    let rayNode = SCNNode(geometry: cylinder)
+//    
+//    // Posiziona il cilindro al punto medio tra start e end
+//    rayNode.position = SCNVector3(
+//        (start.x + end.x) / 2,
+//        (start.y + end.y) / 2,
+//        (start.z + end.z) / 2
+//    )
+//    
+//    // Calcola la rotazione del cilindro per allinearlo al vettore
+//    let direction = vector.normalized()
+//    let up = SCNVector3(0, 1, 0) // L'asse Y locale del cilindro
+//    let rotation = SCNVector4.rotation(from: up, to: direction)
+//    rayNode.rotation = rotation
+//
+//    // Aggiungi il cilindro alla scena
+//    scene.rootNode.addChildNode(rayNode)
+//}
