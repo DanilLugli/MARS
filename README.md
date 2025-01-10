@@ -25,7 +25,7 @@ To add **MARS** to your project, use **Swift Package Manager (SPM)**. Add the fo
 dependencies: [
     .package(url: "https://github.com/DanilLugli/MARS.git", .upToNextMajor(from: "1.0.0"))
 ]
-
+```
 ## How to Use
 
 Using MARS in your project is straightforward. Follow these steps:
@@ -37,7 +37,7 @@ Using MARS in your project is straightforward. Follow these steps:
    import SwiftUI
    import MARS
    import ARKit
-
+   ```
 2.	**Create a Basic View with MARS**
     Here’s a simplified example of how to use MARS to calculate and display the device’s position in a 3D environment:
 
@@ -65,6 +65,6 @@ Using MARS in your project is straightforward. Follow these steps:
             }
         }
     }
-
+    ```
 	3.	**Run App**
      MARS will handle the positioning and visualization based on the provided environment data.
