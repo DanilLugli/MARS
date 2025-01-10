@@ -46,6 +46,7 @@ Here’s a simplified example of how to use MARS to calculate and display the de
 
     ```swift
     struct ContentView: View {
+
         @State private var locationProvider: PositionProvider? = nil
         @State private var arView = ARSCNView()
 
@@ -59,7 +60,7 @@ Here’s a simplified example of how to use MARS to calculate and display the de
                     Button("Start Positioning") {
                         let fileManager = FileManager.default
                         
-                        let arlCreator_Data = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("ARL_Creator_DATA")
+                        let arlCreator_Data = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("ARLCreator_DATA")
 
                         locationProvider = PositionProvider(data: arlCreator_Data, arSCNView: arView)
                     }
@@ -69,4 +70,4 @@ Here’s a simplified example of how to use MARS to calculate and display the de
     }
     ```
 3.	**Run App**
-MARS will handle the positioning and visualization based on the provided environment data.
+MARS will manage both the positioning and visualization of the device using the data provided in `arlCreator_Data`.
