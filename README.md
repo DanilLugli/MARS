@@ -31,15 +31,18 @@ dependencies: [
 Using MARS in your project is straightforward. Follow these steps:
 
 1. **Import MARS and Required Libraries**  
-   Add the following imports to your SwiftUI view:
+Add the following imports to your SwiftUI view:
 
    ```swift
    import SwiftUI
    import MARS
    import ARKit
    ```
-2.	**Create a Basic View with MARS**
-    Here’s a simplified example of how to use MARS to calculate and display the device’s position in a 3D environment:
+2.	**How to use MARS in your App**  
+Here’s a simplified example of how to use MARS to calculate and display the device’s position in a 3D environment:
+
+- Load the data created with **ARL Creator** directly from its directory.  
+- Create an instance of `PositionProvider`, passing your `ARSCNView` and the data from **ARL Creator**.
 
     ```swift
     struct ContentView: View {
@@ -49,22 +52,21 @@ Using MARS in your project is straightforward. Follow these steps:
         var body: some View {
             VStack {
                 if let provider = locationProvider {
+
                     provider.showMap()
-                        .ignoresSafeArea()
+                       
                 } else {
                     Button("Start Positioning") {
                         let fileManager = FileManager.default
-                        let environmentDataPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("EnvironmentData")
-                        locationProvider = PositionProvider(data: environmentDataPath, arSCNView: arView)
+                        
+                        let arlCreator_Data = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("ARL_Creator_DATA")
+
+                        locationProvider = PositionProvider(data: arlCreator_Data, arSCNView: arView)
                     }
-                    .font(.headline)
-                    .padding()
-                    .background(Color.blue.opacity(0.2))
-                    .cornerRadius(10)
                 }
             }
         }
     }
     ```
-	3.	**Run App**
-     MARS will handle the positioning and visualization based on the provided environment data.
+3.	**Run App**
+MARS will handle the positioning and visualization based on the provided environment data.
