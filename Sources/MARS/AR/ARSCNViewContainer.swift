@@ -27,6 +27,10 @@ struct ARSCNViewContainer: UIViewRepresentable {
         setupConfiguration()
     }
     
+    private func setupConfiguration() {
+        configuration.planeDetection = [.horizontal, .vertical]
+    }
+    
     func makeUIView(context: Context) -> ARSCNView {
         arSCNView.delegate = delegate
         delegate.setSceneView(arSCNView)
@@ -34,40 +38,50 @@ struct ARSCNViewContainer: UIViewRepresentable {
         return arSCNView
     }
     
-    func updateUIView(_ uiView: ARSCNView, context: Context) {
-    }
+    func updateUIView(_ uiView: ARSCNView, context: Context) {}
 
-    private func setupConfiguration() {
-        configuration.planeDetection = [.horizontal, .vertical]
-    }
     
     private func configureSceneView() {
         arSCNView.autoenablesDefaultLighting = true
         arSCNView.automaticallyUpdatesLighting = true
     }
-
-    func startPlaneDetection() {
-        arSCNView.debugOptions = [.showWorldOrigin, .showFeaturePoints]
-        arSCNView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
-    }
     
-    mutating func startARSCNView(with room: Room, for start: Bool) {
+    func startARSCNView(with room: Room, for start: Bool, from building: Building) -> Room {
         switch start {
         case true:
-
+            
             configuration.maximumNumberOfTrackedImages = 1
             arSCNView.debugOptions = [.showWorldOrigin, .showFeaturePoints]
-            arSCNView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
             
+            configuration.isAutoFocusEnabled = true
+            print("🔍 DEBUG CHECK: Numero di detectionImages: \(building.detectionImages.count)")
+            configuration.detectionImages = building.detectionImages
             
+            if building.detectionImages.isEmpty {
+                print("⚠️ WARNING: Nessuna immagine di riferimento trovata! Controlla il caricamento.")
+            } else {
+                print("✅ DEBUG: \(configuration.detectionImages?.count ?? 0) immagini di riferimento caricate in ARKit.")
+                
+                for image in building.detectionImages {
+                    print("✅ DEBUG: Immagine caricata - Nome: \(image.name ?? "No Name"), Larghezza: \(image.physicalSize) metri")
+                }
+                
+                print("✅ DEBUG CHECK: \(building.detectionImages.count) immagini di riferimento caricate correttamente.")
+                
+                self.arSCNView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+            }
+            
+            return room
             
         case false:
-            
-            self.roomActive = room.name
-            configuration.initialWorldMap = room.arWorldMap
-            arSCNView.debugOptions = [.showWorldOrigin, .showFeaturePoints]
-            arSCNView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+            print("TEST")
+//
+//            self.roomActive = room.name
+//            configuration.initialWorldMap = room.arWorldMap
+//            arSCNView.debugOptions = [.showWorldOrigin, .showFeaturePoints]
+//            arSCNView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
 
         }
+        return room
     }
 }

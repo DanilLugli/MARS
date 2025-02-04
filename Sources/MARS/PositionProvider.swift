@@ -42,6 +42,10 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     @Published var activeRoom: Room = Room()
     @Published var prevRoom: Room = Room()
     @Published var activeFloor: Floor = Floor()
+    
+    @Published var markerFounded: Bool = false
+    
+    @Published var showMarkerFoundedToast: Bool = false
 
     var currentMatrix: simd_float4x4 = simd_float4x4(1.0)
     var offMatrix: simd_float4x4 = simd_float4x4(1.0)
@@ -66,43 +70,65 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             self.building = Building()
         }
         
-        var defaultReferenceImage: ARReferenceImage? = nil
-        if let placeholderImage = UIImage(named: "placeholderImage"),
-           let cgImage = placeholderImage.cgImage {
-            defaultReferenceImage = ARReferenceImage(cgImage, orientation: .up, physicalWidth: 0.1)
-        }
-
-        self.building.floors.forEach { floor in
-            floor.rooms.forEach { room in
-                room.referenceMarkers.forEach { marker in
-                    if let image = marker.image ?? defaultReferenceImage {
-                        print("Insert: \(image.name) with \(image.physicalSize)")
-                        self.markers.insert(image)
-                    }
-                }
-            }
-        }
-          
+        self.delegate.positionProvider = self
         self.delegate.addLocationObserver(positionObserver: self)
     }
 
     public func start() {
 
-        self.activeFloor = self.building.floors[0]
-                
-        let roomNodes = self.activeFloor.rooms.map { $0.name }
+//        self.activeFloor = self.building.floors[0]
+//                
+//        let roomNodes = self.activeFloor.rooms.map { $0.name }
+//        
+//        self.activeRoom = self.activeFloor.rooms[4]
+//        self.roomMatrixActive = self.activeRoom.name
+//        self.activeRoomPlanimetry = self.activeRoom.planimetry
+//        self.prevRoom = self.activeRoom
+//        
+//        self.scnFloorView.loadPlanimetry(scene: self.activeFloor, roomsNode: roomNodes  ,borders: true, nameCaller: activeFloor.name)
+//        self.scnRoomView.loadPlanimetry(scene: self.activeRoom, roomsNode: nil, borders: true, nameCaller: activeRoom.name)
+//        
+//        addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
         
-        self.activeRoom = self.activeFloor.rooms[1]
-        self.roomMatrixActive = self.activeRoom.name
-        self.activeRoomPlanimetry = self.activeRoom.planimetry
-        self.prevRoom = self.activeRoom
+        self.arSCNView.startARSCNView(with: self.activeRoom, for: true, from: self.building)
+    }
+    
+    
+    func findRoomFromMarker(markerName: String){
+           
+        for floor in self.building.floors {
+            for room in floor.rooms {
+                if room.referenceMarkers.contains(where: { $0.name == markerName }) {
+                    print("DEBUG: Trovata stanza: \(room.name) per il marker: \(markerName)")
+                    self.roomRecognized(room)
+                }
+            }
+        }
         
-        self.scnFloorView.loadPlanimetry(scene: self.activeFloor, roomsNode: roomNodes  ,borders: true, nameCaller: activeFloor.name)
-        self.scnRoomView.loadPlanimetry(scene: self.activeRoom, roomsNode: nil, borders: true, nameCaller: activeRoom.name)
-        
-        addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
+        print("DEBUG: Nessuna stanza trovata per il marker: \(markerName)")
+    }
+    
+    func roomRecognized(_ room: Room) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.activeFloor = room.parentFloor ?? self.building.floors.first ?? Floor()
+            self.activeRoom = room
+            self.roomMatrixActive = room.name
+            self.activeRoomPlanimetry = room.planimetry
+            self.prevRoom = room
 
-        self.arSCNView.startARSCNView(with: self.activeRoom, for: false)
+            let roomNodes = self.activeFloor.rooms.map { $0.name }
+
+            self.scnFloorView.loadPlanimetry(scene: self.activeFloor, roomsNode: roomNodes, borders: true, nameCaller: self.activeFloor.name)
+            self.scnRoomView.loadPlanimetry(scene: self.activeRoom, roomsNode: nil, borders: true, nameCaller: self.activeRoom.name)
+
+            addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
+
+            self.arSCNView.startARSCNView(with: self.activeRoom, for: false, from: self.building)
+
+            self.markerFounded = true
+            self.showMarkerFoundedToast = true
+        }
     }
     
     public func onLocationUpdate(_ newPosition: simd_float4x4, _ newTrackingState: String) {
@@ -276,7 +302,6 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     func checkSwitchRoom() {
         
         guard let posFloorNode = scnFloorView.scnView.scene?.rootNode.childNode(withName: "POS_FLOOR", recursively: true) else {
-            print("Node POS_FLOOR not found")
             return
         }
         
@@ -297,7 +322,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             self.roomMatrixActive = prevRoom.name
             self.activeRoom = activeFloor.getRoom(byName: nextRoomName) ?? prevRoom
             
-            self.arSCNView.startARSCNView(with: activeRoom, for: false)
+            self.arSCNView.startARSCNView(with: activeRoom, for: false, from: self.building)
 
             let roomNames = activeFloor.rooms.map { $0.name }
 
@@ -454,87 +479,3 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     }
     
 }
-
-//
-//
-//func findFloorBelow(point: SCNVector3, floors: [SCNNode]) -> SCNNode? {
-//    
-//    // Configura le opzioni per l'hit-test
-//    let hitTestOptions: [String: Any] = [
-//        SCNHitTestOption.backFaceCulling.rawValue: false,  // Ignora il culling delle facce posteriori
-//        SCNHitTestOption.boundingBoxOnly.rawValue: false, // Usa la geometria effettiva
-//        SCNHitTestOption.ignoreHiddenNodes.rawValue: false // Non ignora i nodi nascosti
-//    ]
-//
-//    // Lancia un raycast verso il basso per ogni pavimento
-//    for floor in floors {
-//        // Posizione del dispositivo nella scena
-//        print("Device position in scene: \(point)")
-//
-//        // Posizione del nodo in cui si sta facendo il test
-//        print("Testing floor node position: \(floor.position)")
-//
-//        // Definizione del segmento di hit test
-//        let rayStart = point
-//        let rayEnd = SCNVector3(point.x, point.y - 10, point.z)
-//        addDebugMarker(at: rayStart, color: .green, scene: self.scnFloorView.scnView.scene!)
-//        addDebugMarker(at: rayEnd, color: .red, scene: self.scnFloorView.scnView.scene!)
-//        // Stampa la posizione del raggio di partenza e di fine
-//        print("Ray start position: \(rayStart)")
-//        print("Ray end position: \(rayEnd)")
-//
-//        // Esegui l'hit test
-//        let hitResults = floor.hitTestWithSegment(from: rayStart, to: rayEnd, options: hitTestOptions)
-//        
-//        // Disegna il raggio per la visualizzazione nella scena
-//        drawRay(from: rayStart, to: rayEnd, in: self.scnFloorView.scnView.scene!)
-//
-//        if let closestHit = hitResults.first {
-//            // Distanza tra il punto del dispositivo e il punto di intersezione
-//            let distance = closestHit.worldCoordinates.distance(to: point)
-//
-//            print("Hit detected on node: \(closestHit.node.name ?? "Unnamed Node")")
-//            print("Hit world coordinates: \(closestHit.worldCoordinates)")
-//            print("Distance to hit: \(distance)")
-//
-//            return floor
-//        } else {
-//            print("No hit detected for this floor.")
-//        }
-//    }
-//
-//
-//    print("No floors were intersected.")
-//    return nil
-//}
-//
-//func drawRay(from start: SCNVector3, to end: SCNVector3, in scene: SCNScene, color: UIColor = .blue) {
-//    // Calcola la direzione (vettore) tra start e end
-//    let vector = SCNVector3(end.x - start.x, end.y - start.y, end.z - start.z)
-//    
-//    // Calcola la lunghezza del vettore
-//    let length = sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z)
-//    
-//    // Crea un cilindro con la lunghezza calcolata
-//    let cylinder = SCNCylinder(radius: 0.01, height: CGFloat(length))
-//    cylinder.firstMaterial?.diffuse.contents = color
-//
-//    // Crea un nodo per il cilindro
-//    let rayNode = SCNNode(geometry: cylinder)
-//    
-//    // Posiziona il cilindro al punto medio tra start e end
-//    rayNode.position = SCNVector3(
-//        (start.x + end.x) / 2,
-//        (start.y + end.y) / 2,
-//        (start.z + end.z) / 2
-//    )
-//    
-//    // Calcola la rotazione del cilindro per allinearlo al vettore
-//    let direction = vector.normalized()
-//    let up = SCNVector3(0, 1, 0) // L'asse Y locale del cilindro
-//    let rotation = SCNVector4.rotation(from: up, to: direction)
-//    rayNode.rotation = rotation
-//
-//    // Aggiungi il cilindro alla scena
-//    scene.rootNode.addChildNode(rayNode)
-//}

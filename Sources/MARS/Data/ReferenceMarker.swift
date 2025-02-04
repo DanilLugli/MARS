@@ -10,14 +10,14 @@ import ARKit
 
 public class ReferenceMarker: ObservableObject, Identifiable, Decodable {
     public var id: UUID
-    public var image: ARReferenceImage?
+    public var arReferenceImage: ARReferenceImage?
     public var width: CGFloat
-    public var room: String = ""
+    public var roomName: String = ""
     public var name: String
     
     public init(id: UUID = UUID(), image: ARReferenceImage? = nil, width: CGFloat, name: String) {
         self.id = id
-        self.image = image
+        self.arReferenceImage = image
         self.width = width
         self.name = name
     }
@@ -33,15 +33,31 @@ public class ReferenceMarker: ObservableObject, Identifiable, Decodable {
         self.id = UUID()
         self.width = try container.decode(CGFloat.self, forKey: .width)
         self.name = try container.decode(String.self, forKey: .name)
-        self.image = nil
+        self.arReferenceImage = nil
     }
 
     public func loadARReferenceImage(from imageSource: UIImage) {
-        if let cgImage = imageSource.cgImage {
-            self.image = ARReferenceImage(cgImage, orientation: .up, physicalWidth: self.width)
-            self.image?.name = self.name
+        var cgImage: CGImage? = imageSource.cgImage
+
+        if cgImage == nil, let ciImage = imageSource.ciImage {
+            let context = CIContext()
+            cgImage = context.createCGImage(ciImage, from: ciImage.extent)
+        }
+
+        guard let finalCGImage = cgImage else {
+            print("DEBUG: Impossibile ottenere cgImage per '\(self.name)'")
+            return
+        }
+
+        let meterWidth = self.width / 100.0
+
+        self.arReferenceImage = ARReferenceImage(finalCGImage, orientation: .up, physicalWidth: meterWidth)
+
+        if let image = self.arReferenceImage {
+            image.name = self.name
+            print("DEBUG: ARReferenceImage creata correttamente per '\(self.name)' con larghezza: \(image.physicalSize.width) metri")
         } else {
-            print("Errore: impossibile ottenere cgImage dall'immagine fornita.")
+            print("DEBUG: Creazione ARReferenceImage fallita per '\(self.name)'")
         }
     }
     
@@ -50,3 +66,4 @@ public class ReferenceMarker: ObservableObject, Identifiable, Decodable {
         var width: CGFloat
     }
 }
+

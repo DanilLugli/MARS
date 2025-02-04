@@ -1,6 +1,6 @@
 # MARS (Multiple Augmented Reality System)
 
-MARS is a **Swift** library designed to calculate the device's position within 3D environments. These environments are generated using the **ARL Creator** app.
+MARS is a **Swift** library designed to calculate the device's position within 3D environments using ARWorldTrackingConfiguration configuration of ARKit. These environments are generated using the **ARL Creator** app.
 
 Leveraging the data created with ARL Creator, MARS uses ARWorldMap from **ARKit** to calculate the position within the 3D environment and SCNScene from **SceneKit** to display the position on the environment map. This integration provides a seamless way to visualize and interact with augmented reality spaces.
 

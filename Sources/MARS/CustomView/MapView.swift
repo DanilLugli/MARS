@@ -1,5 +1,6 @@
 import SwiftUI
 import ARKit
+import AlertToast
 
 @available(iOS 16.0, *)
 public struct MapView: View {
@@ -8,6 +9,9 @@ public struct MapView: View {
     
     @State private var hasStarted: Bool = false
     @State private var debug: Bool = true
+    
+    @State private var scale: CGFloat = 1.0
+    
     @State private var roomMap: SCNViewContainer = SCNViewContainer()
     
     public init(locationProvider: PositionProvider) {
@@ -18,10 +22,16 @@ public struct MapView: View {
     public var body: some View {
         if #available(iOS 17.0, *) {
             ZStack {
-                
+            
                 locationProvider.arSCNView
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
+                
+                if locationProvider.markerFounded == false{
+                    Color.black.opacity(0.6)
+                        .edgesIgnoringSafeArea(.all)
+                }
+                
                 
                 switch debug {
                     
@@ -30,9 +40,9 @@ public struct MapView: View {
                         
                         CardView(
                             buildingMap: locationProvider.building.name,
-                            floorMap: locationProvider.angleGradi,
+                            floorMap: locationProvider.activeFloor.name,
                             
-                            roomMap: String(locationProvider.lastFloorAngle),
+                            roomMap: locationProvider.activeRoom.name,
                             matrixMap: locationProvider.roomMatrixActive,
                             actualPosition: locationProvider.lastFloorPosition,
                             trackingState: locationProvider.trackingState,
@@ -46,17 +56,6 @@ public struct MapView: View {
                         
                         VStack {
                             
-                            Button(action: {
-                                locationProvider.printMatrix()
-                            }) {
-                                Text("Save Matrix")
-                                    .padding()
-                                    .frame(maxWidth: .infinity)
-                                    .background(Color.blue)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(18)
-                            }
-
                             
                             HStack {
                                 VStack {
@@ -118,33 +117,61 @@ public struct MapView: View {
                     
                 case false:
                     VStack {
-                        Spacer()
-                        
-                        VStack {
-                            HStack {
-                                locationProvider.scnFloorView
-                                    .frame(width: 380, height: 200)
-                                    .cornerRadius(20)
-                                    .padding(.bottom, 20)
-                            }
-                            
-                            HStack {
-                                Text("Debug Mode")
-                                    .font(.system(size: 18))
+                        if locationProvider.markerFounded == false{
+
+                            VStack{
+                                Image(systemName: "camera.viewfinder")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 100, height: 100)
+                                    .foregroundColor(.white)
+                                    .scaleEffect(scale)
+                                    .animation(
+                                        Animation.easeInOut(duration: 1.5)
+                                            .repeatForever(autoreverses: true),
+                                        value: scale
+                                    )
+                                    .onAppear {
+                                        scale = 1.2
+                                    }
+                                
+                                Text("Searching Marker...")
+                                    .font(.title3)
                                     .bold()
                                     .foregroundColor(.white)
-                                    .padding([.leading, .trailing], 16)
-                                Toggle("", isOn: $debug)
-                                    .toggleStyle(SwitchToggleStyle())
-                                    .padding([.leading, .trailing], 16)
+                                    .padding(.top, 22)
                             }
-                            .frame(width: 300, height: 60)
-                            .background(Color.blue.opacity(0.4))
-                            .cornerRadius(20)
                             
                         }
-                        .padding(.bottom, 40)
-                        
+                        else{
+                            
+                            Spacer()
+                            
+                            VStack {
+                                HStack {
+                                    locationProvider.scnFloorView
+                                        .frame(width: 380, height: 200)
+                                        .cornerRadius(20)
+                                        .padding(.bottom, 20)
+                                }
+                                
+                                HStack {
+                                    Text("Debug Mode")
+                                        .font(.system(size: 18))
+                                        .bold()
+                                        .foregroundColor(.white)
+                                        .padding([.leading, .trailing], 16)
+                                    Toggle("", isOn: $debug)
+                                        .toggleStyle(SwitchToggleStyle())
+                                        .padding([.leading, .trailing], 16)
+                                }
+                                .frame(width: 300, height: 60)
+                                .background(Color.blue.opacity(0.4))
+                                .cornerRadius(20)
+                                
+                            }
+                            .padding(.bottom, 40)
+                        }
                     }
                 }
             }
@@ -158,9 +185,16 @@ public struct MapView: View {
                 if let planimetry = locationProvider.activeRoom.planimetry {
                     roomMap.loadPlanimetry(scene: locationProvider.activeRoom, roomsNode: nil, borders: true, nameCaller: "")
                 }
+            }.toast(isPresenting: $locationProvider.showMarkerFoundedToast, duration: 7.0) {
+                AlertToast(
+                    displayMode: .hud,
+                    type: .systemImage("location.fill", .green),
+                    title: "Marker Found",
+                    subTitle: "You have been located in \(locationProvider.activeRoom.name)"
+                )
             }
         } else {
-            // Fallback on earlier versions
+            //
         }
     }
 }

@@ -30,8 +30,24 @@ struct FileHandler {
                 let floors = try loadFloors(from: buildingURL)
                 let loadedBuilding = Building(name: buildingURL.lastPathComponent, floors: floors)
                 
+                var roomForReferenceImageName: [String: Room] = [:]
+                
+                for floor in loadedBuilding.floors{
+                    for room in floor.rooms {
+                        for marker in room.referenceMarkers {
+                            if let arImage = marker.arReferenceImage, let imageName = arImage.name {
+                                loadedBuilding.detectionImages.insert(arImage)
+                                roomForReferenceImageName[imageName] = room
+                            } else {
+                                print("ReferenceMarker \(marker.name) non ha un ARReferenceImage valido.")
+                            }
+                        }
+                    }
+                }
+                
+                print(loadedBuilding.detectionImages.count)
+                
                 return loadedBuilding
-                //return
             }
         }
         throw NSError(domain: "com.example.error", code: 404, userInfo: [NSLocalizedDescriptionKey: "No building found"])
@@ -58,11 +74,7 @@ struct FileHandler {
                 )
                 
                 floor.rooms = try loadRooms(from: floorURL, floor: floor)
-                
-//                if let usdzScene = try loadSceneIfAvailable(for: floor, url: floorURL) {
-//                    floor.scene = usdzScene
-//                }
-//                
+
                 floors.append(floor)
             }
         }
@@ -96,13 +108,13 @@ struct FileHandler {
                     parentFloor: floor
                 )
                 
-                room.referenceMarkers.forEach { $0.room = room.name }
+                room.referenceMarkers.forEach { $0.roomName = room.name }
+                print(room.referenceMarkers.count)
                 
                 if let usdzScene = try loadSceneIfAvailable(for: room, url: roomURL) {
                    
                     room.scene = usdzScene
-                    //room.planimetry?.loadPlanimetry(scene: room, roomsNode: nil, borders: true, nameCaller: room.name)
-    
+                  
                 }
                 
                 func countNodesRecursively(in node: SCNNode) -> Int {
@@ -278,17 +290,21 @@ struct FileHandler {
                 for ext in possibleExtensions {
                     let imageURL = referenceMarkerURL.appendingPathComponent(newMarker.name).appendingPathExtension(ext)
                     
-                    if FileManager.default.fileExists(atPath: imageURL.path),
-                       let image = UIImage(contentsOfFile: imageURL.path) {
-
-                        newMarker.loadARReferenceImage(from: image)
-                        imageFound = true
-                        referenceMarkers.append(newMarker)
-                        break
+                    if FileManager.default.fileExists(atPath: imageURL.path) {
+                        
+                        if let image = UIImage(contentsOfFile: imageURL.path) {
+                            print("FIle trovato")
+                            newMarker.loadARReferenceImage(from: image)
+                            referenceMarkers.append(newMarker)
+                            
+                            imageFound = true
+                            break
+                        } else {
+                            print("DEBUG: Impossibile caricare UIImage da \(imageURL.path)")
+                        }
+                    } else {
+                        print("DEBUG: File non trovato: \(imageURL.path)")
                     }
-                }
-                if !imageFound {
-                    print("Immagine non trovata per il marker con nome \(newMarker.name) in \(referenceMarkerURL.path)")
                 }
             }
         }
@@ -329,3 +345,4 @@ struct FileHandler {
     }
 
 }
+
