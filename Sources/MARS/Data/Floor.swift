@@ -74,4 +74,8 @@ public class Floor: Equatable, Hashable, @preconcurrency Decodable{
         self.scene = SCNScene()
         self.floorURL = URL(fileURLWithPath: "")
     }
+    
+    public static func getFloorByName(from floors: [Floor], name: String) -> Floor? {
+        return floors.first { $0.name == name }
+    }
 }

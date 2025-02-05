@@ -46,6 +46,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     @Published var markerFounded: Bool = false
     
     @Published var showMarkerFoundedToast: Bool = false
+    @Published var showChangeFloorToast: Bool = false
 
     var currentMatrix: simd_float4x4 = simd_float4x4(1.0)
     var offMatrix: simd_float4x4 = simd_float4x4(1.0)
@@ -122,7 +123,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             self.scnFloorView.loadPlanimetry(scene: self.activeFloor, roomsNode: roomNodes, borders: true, nameCaller: self.activeFloor.name)
             self.scnRoomView.loadPlanimetry(scene: self.activeRoom, roomsNode: nil, borders: true, nameCaller: self.activeRoom.name)
 
-            addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
+            //addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
 
             self.arSCNView.startARSCNView(with: self.activeRoom, for: false, from: self.building)
 
@@ -132,7 +133,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     }
     
     public func onLocationUpdate(_ newPosition: simd_float4x4, _ newTrackingState: String) {
-        
+
         switch switchingRoom {
         case false:
             self.position = newPosition
@@ -154,6 +155,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             }
 
             checkSwitchRoom()
+            checkSwitchFloor()
             
         case true:
 
@@ -173,9 +175,100 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         }
         
     }
+    
+    func checkSwitchRoom() {
+        
+        guard let posFloorNode = scnFloorView.scnView.scene?.rootNode.childNode(withName: "POS_FLOOR", recursively: true) else {
+            return
+        }
+        
+        var roomsNode = getNodesMatchingRoomNames(from: activeFloor, in: scnFloorView.scnView)
+        
+        for room in roomsNode{
+            print(room.name)
+        }
+        
+        let nextRoomName = findPositionContainer(for: posFloorNode.worldPosition)?.name ?? "Error Contained"
+        self.nodeContainedIn = nextRoomName
+
+        if nextRoomName != activeRoom.name, activeFloor.rooms.contains(where: { $0.name == nextRoomName }) {
+            
+            self.switchingRoom = true
+
+            prevRoom = activeRoom
+            self.roomMatrixActive = prevRoom.name
+            self.activeRoom = activeFloor.getRoom(byName: nextRoomName) ?? prevRoom
+            
+            self.arSCNView.startARSCNView(with: activeRoom, for: false, from: self.building)
+
+            let roomNames = activeFloor.rooms.map { $0.name }
+
+            if let planimetry = activeRoom.planimetry {
+                self.scnRoomView.loadPlanimetry(scene: activeRoom,
+                                                roomsNode: roomNames,
+                                                borders: true,
+                                                nameCaller: activeRoom.name)
+            }
+            
+        } else {
+            print("Node are in the same room: \(self.nodeContainedIn)")
+        }
+    }
+    
+    func checkSwitchFloor(){
+        
+        if let posRoomNode = scnRoomView.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_ROOM" }) {
+            for connection in self.activeRoom.connections{
+                print("connection \(connection.name)")
+                print("connection target room: \(connection.targetRoom)")
+                print("connection target floor: \(connection.targetFloor)")
+                print("POS ROOM: \(posRoomNode.simdWorldTransform.columns.3.y)")
+                print("Altitude: \(connection.altitude)")
+                if posRoomNode.simdWorldTransform.columns.3.y >= connection.altitude - 0.5 &&
+                    posRoomNode.simdWorldTransform.columns.3.y <= connection.altitude + 0.5 {
+                    
+                    let nextRoomName = connection.targetRoom
+                    let nextFloorName = connection.targetFloor
+                    
+                    if nextRoomName != activeRoom.name, nextFloorName != activeFloor.name, ((Floor.getFloorByName(from: building.floors, name: nextFloorName)?.rooms.contains(where: { $0.name == nextRoomName })) != nil) {
+                        
+                        prevRoom = activeRoom
+                        self.roomMatrixActive = prevRoom.name
+                        
+                        self.activeFloor = Floor.getFloorByName(from: building.floors, name: nextFloorName)!
+                        self.activeRoom = activeFloor.getRoom(byName: nextRoomName) ?? prevRoom
+                        
+                        self.arSCNView.startARSCNView(with: activeRoom, for: false, from: self.building)
+                        
+                        let roomNames = activeFloor.rooms.map { $0.name }
+                        
+                        if let planimetry = activeRoom.planimetry {
+                            self.scnRoomView.loadPlanimetry(
+                                scene: activeRoom,
+                                roomsNode: roomNames,
+                                borders: true,
+                                nameCaller: activeRoom.name
+                            )
+                            
+                            self.scnFloorView.loadPlanimetry(
+                                scene: activeFloor,
+                                roomsNode: [],
+                                borders: false,
+                                nameCaller: activeRoom.name
+                            )
+                            showChangeFloorToast = true
+                        }
+                        
+                    } else {
+                        print("Node are in the same room: \(self.nodeContainedIn)")
+                    }
+                }
+            }
+        }
+        
+    }
 
     func calculatePositionOffTracking( lastFloorPosition: simd_float4x4, newPosition: simd_float4x4) -> simd_float4x4 {
-        
         positionOffTracking = offMatrix * newPosition
         return positionOffTracking
     }
@@ -297,45 +390,6 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         print("\n")
         
         cont+=1
-    }
-
-    func checkSwitchRoom() {
-        
-        guard let posFloorNode = scnFloorView.scnView.scene?.rootNode.childNode(withName: "POS_FLOOR", recursively: true) else {
-            return
-        }
-        
-        var roomsNode = getNodesMatchingRoomNames(from: activeFloor, in: scnFloorView.scnView)
-        
-        for room in roomsNode{
-            print(room.name)
-        }
-        
-        let nextRoomName = findPositionContainer(for: posFloorNode.worldPosition)?.name ?? "Error Contained"
-        self.nodeContainedIn = nextRoomName
-
-        if nextRoomName != activeRoom.name, activeFloor.rooms.contains(where: { $0.name == nextRoomName }) {
-            
-            self.switchingRoom = true
-
-            prevRoom = activeRoom
-            self.roomMatrixActive = prevRoom.name
-            self.activeRoom = activeFloor.getRoom(byName: nextRoomName) ?? prevRoom
-            
-            self.arSCNView.startARSCNView(with: activeRoom, for: false, from: self.building)
-
-            let roomNames = activeFloor.rooms.map { $0.name }
-
-            if let planimetry = activeRoom.planimetry {
-                self.scnRoomView.loadPlanimetry(scene: activeRoom,
-                                                roomsNode: roomNames,
-                                                borders: true,
-                                                nameCaller: activeRoom.name)
-            }
-            
-        } else {
-            print("Node are in the same room: \(self.nodeContainedIn)")
-        }
     }
     
     func createRotationMatrixY(angle: Float) -> simd_float4x4 {

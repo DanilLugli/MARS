@@ -45,17 +45,24 @@ public struct SCNViewContainer: UIViewRepresentable {
         } else {
             print("The provided scene is neither a Room nor a Floor.")
         }
-        
-        
-        addOriginMarker(to: self.scnView.scene!)
+        //addOriginMarker(to: self.scnView.scene!)
         
         drawSceneObjects(borders: true)
         
         setMassCenter()
         
         setCamera(scnView: self.scnView, cameraNode: self.cameraNode, massCenter: self.massCenter)
+        //self.scnView.scene?.rootNode.scale = SCNVector3(2.0, 2.0, 2.0)
+        if let rootNode = self.scnView.scene?.rootNode {
+            for child in rootNode.childNodes {
+                if child.name?.prefix(3) != "POS"{
+                    //child.scale = SCNVector3(2.0, 2.0, 2.0)
+                }
+              
+            }
+        }
         
-        createAxesNode()
+       // createAxesNode()
     }
     
     func loadScene(from baseURL: URL, name: String, type: String) {
@@ -155,7 +162,7 @@ public struct SCNViewContainer: UIViewRepresentable {
         }) {
             let calculatedMassCenter = findMassCenter(nodes)
             massCenter.worldPosition = calculatedMassCenter.worldPosition
-            drawCross(at: massCenter)
+           // drawCross(at: massCenter)
         }
         
         scnView.scene?.rootNode.addChildNode(massCenter)
@@ -224,29 +231,29 @@ public struct SCNViewContainer: UIViewRepresentable {
         cameraNode.worldPosition = SCNVector3(
             massCenter.worldPosition.x,
             massCenter.worldPosition.y + 10,
-            massCenter.worldPosition.z)
+            massCenter.worldPosition.z
+        )
         
         cameraNode.camera?.usesOrthographicProjection = true
-        cameraNode.camera?.orthographicScale = 10
+        cameraNode.camera?.orthographicScale = 5
         cameraNode.eulerAngles = SCNVector3(-Double.pi / 2, 0, 0)
-        
+
+        scnView.scene?.rootNode.childNodes
+            .filter { $0.light?.type == .ambient }
+            .forEach { $0.removeFromParentNode() }
+
         let ambientLight = SCNNode()
         ambientLight.light = SCNLight()
         ambientLight.light!.type = .ambient
-        ambientLight.light!.color = UIColor(white: 0.5, alpha: 1.0)
+        ambientLight.light!.color = UIColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1.0)
+        ambientLight.light!.intensity = 1200
         scnView.scene?.rootNode.addChildNode(ambientLight)
-        
-        let directionalLight = SCNNode()
-        directionalLight.light = SCNLight()
-        directionalLight.light!.type = .directional
-        directionalLight.light!.color = UIColor(white: 1.0, alpha: 1.0)
-        directionalLight.eulerAngles = SCNVector3(-Float.pi / 3, 0, 0)
-        scnView.scene?.rootNode.addChildNode(directionalLight)
             
         scnView.pointOfView = cameraNode
         scnView.scene?.rootNode.addChildNode(cameraNode)
         cameraNode.constraints = []
     }
+
 
     func setCameraUp(scnView: SCNView, cameraNode: SCNNode, massCenter: SCNNode) {
         cameraNode.camera = SCNCamera()
@@ -509,7 +516,7 @@ public struct SCNViewContainer: UIViewRepresentable {
             
             if gesture.state == .changed {
                 let newScale = camera.orthographicScale / Double(gesture.scale)
-                camera.orthographicScale = max(5.0, min(newScale, 50.0)) // Limita lo zoom tra 5x e 50x
+                camera.orthographicScale = max(1.0, min(newScale, 200.0)) 
                 gesture.scale = 1
             }
         }
@@ -519,7 +526,7 @@ public struct SCNViewContainer: UIViewRepresentable {
             let translation = gesture.translation(in: parent.scnView)
             
             parent.cameraNode.position.x -= Float(translation.x) * 0.01
-            parent.cameraNode.position.z += Float(translation.y) * 0.01
+            parent.cameraNode.position.z -= Float(translation.y) * 0.01
             
             gesture.setTranslation(.zero, in: parent.scnView)
             

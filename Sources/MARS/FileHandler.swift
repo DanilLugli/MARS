@@ -12,7 +12,14 @@ import SwiftUICore
 
 @available(iOS 16.0, *)
 @MainActor
-struct FileHandler {
+class FileHandler: ObservableObject {
+    
+    static let shared = FileHandler()  // ✅ Singleton per mantenere lo stato
+    
+    @Published var isLoadingComplete: Bool = false
+    @Published var isErrorMatrix: Bool = false
+    
+    private let fileManager = FileManager.default
     
     // MARK: - Load Methods
     
@@ -45,7 +52,33 @@ struct FileHandler {
                     }
                 }
                 
-                print(loadedBuilding.detectionImages.count)
+                for floor in loadedBuilding.floors {
+                    print(floor.associationMatrix.count)
+                    print(floor.rooms.count)
+                    for room in floor.rooms {
+                        if floor.associationMatrix.count != floor.rooms.count{
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                //FileHandler.shared.isErrorMatrix = true
+                            }
+                        }
+                    }
+                }
+                
+                if loadedBuilding.floors.count > 1 {
+                    var allFloorsHaveConnections = true
+
+                    for floor in loadedBuilding.floors {
+                        let totalConnections = floor.rooms.reduce(0) { $0 + $1.connections.count }
+                        
+                        if totalConnections == 0 {
+                            allFloorsHaveConnections = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                FileHandler.shared.isLoadingComplete = true
+                            }
+                            break
+                        }
+                    }
+                }
                 
                 return loadedBuilding
             }
@@ -168,6 +201,37 @@ struct FileHandler {
                         }
                     }
                 }
+                
+                let connectionFileURL = roomURL.appendingPathComponent("Connection.json")
+                if FileManager.default.fileExists(atPath: connectionFileURL.path) {
+                    do {
+                        
+                        
+                        let jsonData = try Data(contentsOf: connectionFileURL)
+                        if let jsonString = String(data: jsonData, encoding: .utf8) {
+                            print("📂 JSON ricevuto: \(jsonString)")  // ✅ Stampa il JSON per il debug
+                        }
+                        let connections = try JSONDecoder().decode([AdjacentFloorsConnection].self, from: jsonData)
+                        
+                        room.connections.append(contentsOf: connections)
+                        if room.connections.isEmpty {
+                            print("\(room.name) has connections empty")
+                        }
+                        print(room.connections)
+                       
+                    } catch {
+                        DispatchQueue.main.async {
+                            FileHandler.shared.isLoadingComplete = true
+                        }
+                        print("Error loading connections for room \(room.name): \(error)")
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        FileHandler.shared.isLoadingComplete = true
+                    }
+                    print("ERROR IN FILE CONNECTION")
+                }
+                
                 rooms.append(room)
             }
         }

@@ -105,7 +105,7 @@ func addRoomNodesToScene(floor: Floor, scene: SCNScene) {
                 print("No RotoTraslationMatrix found for room: \(room.name)")
             }
             
-            scene.rootNode.addChildNode(roomNode)
+            //scene.rootNode.addChildNode(roomNode)
         }
     } catch {
         print("Error loading room scenes: \(error)")

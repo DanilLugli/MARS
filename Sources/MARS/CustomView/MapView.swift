@@ -6,9 +6,10 @@ import AlertToast
 public struct MapView: View {
     
     @StateObject private var locationProvider: PositionProvider
+    @ObservedObject private var fileHandler = FileHandler.shared 
     
     @State private var hasStarted: Bool = false
-    @State private var debug: Bool = true
+    @State private var debug: Bool = false
     
     @State private var scale: CGFloat = 1.0
     
@@ -132,16 +133,15 @@ public struct MapView: View {
                                         value: scale
                                     )
                                     .onAppear {
-                                        scale = 1.2
+                                        scale = 1.4
                                     }
                                 
                                 Text("Searching Marker...")
                                     .font(.title3)
                                     .bold()
                                     .foregroundColor(.white)
-                                    .padding(.top, 22)
+                                    .padding(.top, 24)
                             }
-                            
                         }
                         else{
                             
@@ -185,12 +185,35 @@ public struct MapView: View {
                 if let planimetry = locationProvider.activeRoom.planimetry {
                     roomMap.loadPlanimetry(scene: locationProvider.activeRoom, roomsNode: nil, borders: true, nameCaller: "")
                 }
-            }.toast(isPresenting: $locationProvider.showMarkerFoundedToast, duration: 7.0) {
+            }.toast(isPresenting: $locationProvider.showMarkerFoundedToast, duration: 5.0) {
                 AlertToast(
                     displayMode: .hud,
                     type: .systemImage("location.fill", .green),
                     title: "Marker Found",
                     subTitle: "You have been located in \(locationProvider.activeRoom.name)"
+                )
+            }
+            .toast(isPresenting: $fileHandler.isLoadingComplete, duration: 5.0) {
+                AlertToast(
+                    displayMode: .hud,
+                    type: .systemImage("exclamationmark.triangle", .red),
+                    title: "Error Connection",
+                    subTitle: "You have 2/more Floor but no connections."
+                )
+            }
+            .toast(isPresenting: $locationProvider.showChangeFloorToast, duration: 5.0) {
+                AlertToast(
+                    displayMode: .hud,
+                    type: .systemImage("arrow.up.arrow.down", .blue),
+                    title: "Changed Floor",
+                    subTitle: "You have changed floor"
+                )
+            }.toast(isPresenting: $fileHandler.isErrorMatrix, duration: 5.0) {
+                AlertToast(
+                    displayMode: .hud,
+                    type: .systemImage("exclamationmark.triangle", .red),
+                    title: "Error Room Position",
+                    subTitle: "There's issue with room position."
                 )
             }
         } else {

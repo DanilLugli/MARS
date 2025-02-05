@@ -46,7 +46,7 @@ struct ARSCNViewContainer: UIViewRepresentable {
         arSCNView.automaticallyUpdatesLighting = true
     }
     
-    func startARSCNView(with room: Room, for start: Bool, from building: Building) -> Room {
+    mutating func startARSCNView(with room: Room, for start: Bool, from building: Building) -> Room {
         switch start {
         case true:
             
@@ -54,19 +54,19 @@ struct ARSCNViewContainer: UIViewRepresentable {
             arSCNView.debugOptions = [.showWorldOrigin, .showFeaturePoints]
             
             configuration.isAutoFocusEnabled = true
-            print("🔍 DEBUG CHECK: Numero di detectionImages: \(building.detectionImages.count)")
+            
             configuration.detectionImages = building.detectionImages
             
             if building.detectionImages.isEmpty {
-                print("⚠️ WARNING: Nessuna immagine di riferimento trovata! Controlla il caricamento.")
+                print("WARNING: Nessuna immagine di riferimento trovata! Controlla il caricamento.")
             } else {
-                print("✅ DEBUG: \(configuration.detectionImages?.count ?? 0) immagini di riferimento caricate in ARKit.")
+                print("DEBUG: \(configuration.detectionImages?.count ?? 0) immagini di riferimento caricate in ARKit.")
                 
                 for image in building.detectionImages {
-                    print("✅ DEBUG: Immagine caricata - Nome: \(image.name ?? "No Name"), Larghezza: \(image.physicalSize) metri")
+                    print("DEBUG: Immagine caricata - Nome: \(image.name ?? "No Name"), Larghezza: \(image.physicalSize) metri")
                 }
                 
-                print("✅ DEBUG CHECK: \(building.detectionImages.count) immagini di riferimento caricate correttamente.")
+                print("DEBUG CHECK: \(building.detectionImages.count) immagini di riferimento caricate correttamente.")
                 
                 self.arSCNView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
             }
@@ -74,12 +74,13 @@ struct ARSCNViewContainer: UIViewRepresentable {
             return room
             
         case false:
-            print("TEST")
-//
-//            self.roomActive = room.name
-//            configuration.initialWorldMap = room.arWorldMap
-//            arSCNView.debugOptions = [.showWorldOrigin, .showFeaturePoints]
-//            arSCNView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+            
+            self.roomActive = room.name
+            configuration.detectionImages = nil
+
+            configuration.initialWorldMap = room.arWorldMap
+            arSCNView.debugOptions = [.showWorldOrigin, .showFeaturePoints]
+            self.arSCNView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
 
         }
         return room

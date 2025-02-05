@@ -21,6 +21,7 @@ public class Room: @preconcurrency Decodable, Identifiable, ObservableObject, Eq
     public var transitionZones: [TransitionZone]
     public var scene: SCNScene
     @Published public var planimetry: SCNViewContainer?
+    @Published var connections: [AdjacentFloorsConnection] = []
     public var sceneObjects: [SCNNode]
     public var sceneAnchor: [ARAnchor]
     public var arWorldMap: ARWorldMap?
