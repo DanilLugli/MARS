@@ -52,7 +52,6 @@ public struct SCNViewContainer: UIViewRepresentable {
         setMassCenter()
         
         setCamera(scnView: self.scnView, cameraNode: self.cameraNode, massCenter: self.massCenter)
-        //self.scnView.scene?.rootNode.scale = SCNVector3(2.0, 2.0, 2.0)
         if let rootNode = self.scnView.scene?.rootNode {
             for child in rootNode.childNodes {
                 if child.name?.prefix(3) != "POS"{
@@ -457,7 +456,8 @@ public struct SCNViewContainer: UIViewRepresentable {
 //            scnView.scene?.rootNode.addChildNode(floorPositionNode)
 //    }
     
-    @MainActor func updatePosition(_ newPosition: simd_float4x4, _ matrix: RotoTraslationMatrix?, floor: Floor) {
+    @MainActor
+    func updatePosition(_ newPosition: simd_float4x4, _ matrix: RotoTraslationMatrix?, floor: Floor) {
         
         if matrix == nil {
 

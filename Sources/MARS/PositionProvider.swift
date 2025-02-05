@@ -71,27 +71,17 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             self.building = Building()
         }
         
+        
         self.delegate.positionProvider = self
         self.delegate.addLocationObserver(positionObserver: self)
     }
 
     public func start() {
+//        self.activeFloor = self.building.floors.first ?? Floor()
+//        self.activeRoom = self.activeFloor.rooms.first ?? Room()
+//        
 
-//        self.activeFloor = self.building.floors[0]
-//                
-//        let roomNodes = self.activeFloor.rooms.map { $0.name }
-//        
-//        self.activeRoom = self.activeFloor.rooms[4]
-//        self.roomMatrixActive = self.activeRoom.name
-//        self.activeRoomPlanimetry = self.activeRoom.planimetry
-//        self.prevRoom = self.activeRoom
-//        
-//        self.scnFloorView.loadPlanimetry(scene: self.activeFloor, roomsNode: roomNodes  ,borders: true, nameCaller: activeFloor.name)
-//        self.scnRoomView.loadPlanimetry(scene: self.activeRoom, roomsNode: nil, borders: true, nameCaller: activeRoom.name)
-//        
-//        addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
-        
-        self.arSCNView.startARSCNView(with: self.activeRoom, for: true, from: self.building)
+        ARSessionManager.shared.configureForImageTracking(with: self.building.detectionImages)
     }
     
     
@@ -121,9 +111,10 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             let roomNodes = self.activeFloor.rooms.map { $0.name }
 
             self.scnFloorView.loadPlanimetry(scene: self.activeFloor, roomsNode: roomNodes, borders: true, nameCaller: self.activeFloor.name)
+            
             self.scnRoomView.loadPlanimetry(scene: self.activeRoom, roomsNode: nil, borders: true, nameCaller: self.activeRoom.name)
 
-            //addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
+            addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
 
             self.arSCNView.startARSCNView(with: self.activeRoom, for: false, from: self.building)
 
@@ -190,82 +181,54 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         
         let nextRoomName = findPositionContainer(for: posFloorNode.worldPosition)?.name ?? "Error Contained"
         self.nodeContainedIn = nextRoomName
+        
 
         if nextRoomName != activeRoom.name, activeFloor.rooms.contains(where: { $0.name == nextRoomName }) {
             
+            print("Cambio di stanza: \(activeRoom.name) ➝ \(nextRoomName)")
+            
             self.switchingRoom = true
-
             prevRoom = activeRoom
             self.roomMatrixActive = prevRoom.name
             self.activeRoom = activeFloor.getRoom(byName: nextRoomName) ?? prevRoom
             
-            self.arSCNView.startARSCNView(with: activeRoom, for: false, from: self.building)
+            ARSessionManager.shared.configureForWorldMap(with: activeRoom)
 
             let roomNames = activeFloor.rooms.map { $0.name }
-
-            if let planimetry = activeRoom.planimetry {
-                self.scnRoomView.loadPlanimetry(scene: activeRoom,
-                                                roomsNode: roomNames,
-                                                borders: true,
-                                                nameCaller: activeRoom.name)
-            }
+            scnRoomView.loadPlanimetry(scene: activeRoom, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
             
         } else {
-            print("Node are in the same room: \(self.nodeContainedIn)")
+            print("Nessun cambio di stanza necessario. Contenuto in: \(self.nodeContainedIn)")
         }
     }
     
-    func checkSwitchFloor(){
-        
-        if let posRoomNode = scnRoomView.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_ROOM" }) {
-            for connection in self.activeRoom.connections{
-                print("connection \(connection.name)")
-                print("connection target room: \(connection.targetRoom)")
-                print("connection target floor: \(connection.targetFloor)")
-                print("POS ROOM: \(posRoomNode.simdWorldTransform.columns.3.y)")
-                print("Altitude: \(connection.altitude)")
-                if posRoomNode.simdWorldTransform.columns.3.y >= connection.altitude - 0.5 &&
-                    posRoomNode.simdWorldTransform.columns.3.y <= connection.altitude + 0.5 {
+    func checkSwitchFloor() {
+        guard let posRoomNode = scnRoomView.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_ROOM" }) else {
+            return
+        }
+
+        for connection in self.activeRoom.connections {
+            if posRoomNode.simdWorldTransform.columns.3.y >= connection.altitude - 0.5 &&
+               posRoomNode.simdWorldTransform.columns.3.y <= connection.altitude + 0.5 {
+                
+                let nextFloorName = connection.targetFloor
+                let nextRoomName = connection.targetRoom
+
+                if nextRoomName != activeRoom.name, nextFloorName != activeFloor.name,
+                   let nextFloor = Floor.getFloorByName(from: building.floors, name: nextFloorName),
+                   let nextRoom = nextFloor.getRoom(byName: nextRoomName) {
                     
-                    let nextRoomName = connection.targetRoom
-                    let nextFloorName = connection.targetFloor
+                    prevRoom = activeRoom
+                    self.activeFloor = nextFloor
+                    self.activeRoom = nextRoom
+
+                    print("🔄 Cambio di mappa: \(nextRoom.name) in \(nextFloor.name)")
+                    ARSessionManager.shared.configureForWorldMap(with: activeRoom)
                     
-                    if nextRoomName != activeRoom.name, nextFloorName != activeFloor.name, ((Floor.getFloorByName(from: building.floors, name: nextFloorName)?.rooms.contains(where: { $0.name == nextRoomName })) != nil) {
-                        
-                        prevRoom = activeRoom
-                        self.roomMatrixActive = prevRoom.name
-                        
-                        self.activeFloor = Floor.getFloorByName(from: building.floors, name: nextFloorName)!
-                        self.activeRoom = activeFloor.getRoom(byName: nextRoomName) ?? prevRoom
-                        
-                        self.arSCNView.startARSCNView(with: activeRoom, for: false, from: self.building)
-                        
-                        let roomNames = activeFloor.rooms.map { $0.name }
-                        
-                        if let planimetry = activeRoom.planimetry {
-                            self.scnRoomView.loadPlanimetry(
-                                scene: activeRoom,
-                                roomsNode: roomNames,
-                                borders: true,
-                                nameCaller: activeRoom.name
-                            )
-                            
-                            self.scnFloorView.loadPlanimetry(
-                                scene: activeFloor,
-                                roomsNode: [],
-                                borders: false,
-                                nameCaller: activeRoom.name
-                            )
-                            showChangeFloorToast = true
-                        }
-                        
-                    } else {
-                        print("Node are in the same room: \(self.nodeContainedIn)")
-                    }
+                    showChangeFloorToast = true
                 }
             }
         }
-        
     }
 
     func calculatePositionOffTracking( lastFloorPosition: simd_float4x4, newPosition: simd_float4x4) -> simd_float4x4 {
