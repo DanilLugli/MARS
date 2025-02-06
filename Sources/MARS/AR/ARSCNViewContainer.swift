@@ -144,7 +144,6 @@ class ARSessionManager {
         arSCNView.automaticallyUpdatesLighting = true
     }
 
-    /// 📡 Configura la sessione per il riconoscimento delle immagini di riferimento
      func configureForImageTracking(with detectionImages: Set<ARReferenceImage>) {
         configuration.detectionImages = detectionImages
         configuration.maximumNumberOfTrackedImages = 1
@@ -152,22 +151,20 @@ class ARSessionManager {
         if detectionImages.isEmpty {
             print(" Nessuna immagine di riferimento trovata.")
         } else {
-            print("📡 \(detectionImages.count) immagini caricate per il tracking.")
+            print("\(detectionImages.count) immagini caricate per il tracking.")
         }
 
         restartSession(with: [.resetTracking, .removeExistingAnchors])
     }
 
-    /// 🌍 Configura la sessione per caricare una `ARWorldMap`
      func configureForWorldMap(with room: Room) {
         configuration.detectionImages = nil
         configuration.initialWorldMap = room.arWorldMap
 
-        print("✅ Caricata nuova `ARWorldMap` per la stanza: \(room.name)")
-        restartSession(with: [.removeExistingAnchors])
+        arSCNView.debugOptions = [.showWorldOrigin, .showFeaturePoints]
+        restartSession(with: [.resetTracking, .removeExistingAnchors])
     }
 
-    /// 🔄 Riavvia la sessione AR in modo efficiente
      func restartSession(with options: ARSession.RunOptions) {
         arSCNView.session.pause()
         arSCNView.session.run(configuration, options: options)

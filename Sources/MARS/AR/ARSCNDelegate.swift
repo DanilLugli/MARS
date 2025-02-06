@@ -31,7 +31,6 @@ class ARSCNDelegate: NSObject, LocationSubject, ARSCNViewDelegate {
         if let imageAnchor = anchor as? ARImageAnchor {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
-                print("Immagine riconosciuta: \(imageAnchor.referenceImage.name ?? "Nessun nome")")
                 positionProvider?.findRoomFromMarker(markerName: imageAnchor.referenceImage.name ?? "Error")
             }
         }
@@ -51,6 +50,10 @@ class ARSCNDelegate: NSObject, LocationSubject, ARSCNViewDelegate {
             let newPosition = currentFrame.camera.transform
             self.notifyLocationUpdate(newLocation: newPosition, newTrackingState: trackingStateToString(trackingState))
         }
+    }
+    
+    nonisolated func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
+        print("🔄 Stato Tracking: \(camera.trackingState)")
     }
     
     func addLocationObserver(positionObserver: PositionObserver) {

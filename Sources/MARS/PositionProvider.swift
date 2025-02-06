@@ -26,6 +26,9 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     var firstPrint: Bool = false
 
     var positionObservers: [PositionObserver]
+    
+    var countNormal: Int = 0
+    var readyToChange: Bool = false
 
     @Published var position: simd_float4x4 = simd_float4x4(0)
     @Published var trackingState: String = ""
@@ -77,10 +80,6 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     }
 
     public func start() {
-//        self.activeFloor = self.building.floors.first ?? Floor()
-//        self.activeRoom = self.activeFloor.rooms.first ?? Room()
-//        
-
         ARSessionManager.shared.configureForImageTracking(with: self.building.detectionImages)
     }
     
@@ -90,13 +89,10 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         for floor in self.building.floors {
             for room in floor.rooms {
                 if room.referenceMarkers.contains(where: { $0.name == markerName }) {
-                    print("DEBUG: Trovata stanza: \(room.name) per il marker: \(markerName)")
                     self.roomRecognized(room)
                 }
             }
         }
-        
-        print("DEBUG: Nessuna stanza trovata per il marker: \(markerName)")
     }
     
     func roomRecognized(_ room: Room) {
@@ -144,30 +140,42 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             } else {
                 self.lastFloorPosition = simd_float4x4(1)
             }
-
-            checkSwitchRoom()
+            readyToChange = false
+            checkSwitchRoom(state: true)
             checkSwitchFloor()
             
         case true:
-
+            print("WORKING HERE")
             self.position = newPosition
             self.trackingState = newTrackingState
 
-            positionOffTracking = calculatePositionOffTracking(lastFloorPosition: lastFloorPosition, newPosition: newPosition)
+            
+            print("T.S.: \(newTrackingState)")
+
+            positionOffTracking = calculatePositionOffTracking(lastFloorPosition: self.lastFloorPosition, newPosition: newPosition)
 
             scnRoomView.updatePosition(newPosition, nil, floor: activeFloor)
-            scnFloorView.updatePosition(positionOffTracking, nil, floor: activeFloor)
+            if self.trackingState == "Re-Localizing..."{
+                scnFloorView.updatePosition(positionOffTracking, nil, floor: activeFloor)
+                readyToChange = true
+                
+                //TODO: EDGE CASE, Cambio Room che sei ancora in 'Re-Localizing...', fare doppio calcolo Matrice & Angolo e variabile booleana di controllo
+                //checkSwitchRoom(state: false)
+            }
+          
+            if readyToChange{
+                self.switchingRoom = (newTrackingState != "Normal")
+            }
             
-            self.switchingRoom = (newTrackingState != "Normal")
-            
-            checkSwitchRoom()
+            checkSwitchRoom(state: true)
+
         default:
             break
         }
         
     }
     
-    func checkSwitchRoom() {
+    func checkSwitchRoom(state: Bool) {
         
         guard let posFloorNode = scnFloorView.scnView.scene?.rootNode.childNode(withName: "POS_FLOOR", recursively: true) else {
             return
@@ -185,12 +193,18 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
 
         if nextRoomName != activeRoom.name, activeFloor.rooms.contains(where: { $0.name == nextRoomName }) {
             
-            print("Cambio di stanza: \(activeRoom.name) ➝ \(nextRoomName)")
-            
             self.switchingRoom = true
-            prevRoom = activeRoom
-            self.roomMatrixActive = prevRoom.name
-            self.activeRoom = activeFloor.getRoom(byName: nextRoomName) ?? prevRoom
+            
+            if state{
+                prevRoom = activeRoom
+                self.roomMatrixActive = prevRoom.name
+            }
+            
+            if let newRoom = activeFloor.getRoom(byName: nextRoomName) {
+                self.activeRoom = newRoom
+            } else {
+                self.activeRoom = prevRoom
+            }
             
             ARSessionManager.shared.configureForWorldMap(with: activeRoom)
 
@@ -198,8 +212,9 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             scnRoomView.loadPlanimetry(scene: activeRoom, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
             
         } else {
-            print("Nessun cambio di stanza necessario. Contenuto in: \(self.nodeContainedIn)")
+            print("No change Room: \(self.nodeContainedIn)")
         }
+        
     }
     
     func checkSwitchFloor() {
@@ -222,7 +237,6 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
                     self.activeFloor = nextFloor
                     self.activeRoom = nextRoom
 
-                    print("🔄 Cambio di mappa: \(nextRoom.name) in \(nextFloor.name)")
                     ARSessionManager.shared.configureForWorldMap(with: activeRoom)
                     
                     showChangeFloorToast = true
@@ -259,7 +273,6 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         let cosAngle = cos(angleY)
         let sinAngle = sin(angleY)
 
-        // Matrice di rotazione attorno all'asse Y
         let rotationMatrix = simd_float4x4(
             simd_float4(cosAngle, 0, sinAngle, 0),
             simd_float4(0, 1, 0, 0),
@@ -267,11 +280,9 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             simd_float4(0, 0, 0, 1)
         )
 
-        // Matrice di traslazione
         var translationMatrix = simd_float4x4(1)
         translationMatrix.columns.3 = simd_float4(translation.x, translation.y, translation.z, 1)
 
-        // Combina rotazione e traslazione
         return translationMatrix * rotationMatrix
     }
     
@@ -414,7 +425,6 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     }
     
     private func isPositionContained(_ position: SCNVector3, in node: SCNNode) -> Bool {
-
         guard let geometry = node.geometry else {
             return false
         }
@@ -424,12 +434,20 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             SCNHitTestOption.boundingBoxOnly.rawValue: false,
             SCNHitTestOption.ignoreHiddenNodes.rawValue: false
         ]
+        
         let rayOrigin = position
         let rayDirection = SCNVector3(0, 0, 1)
         let rayEnd = PositionProvider.sum(lhs: rayOrigin, rhs: rayDirection)
 
         let hitResults = node.hitTestWithSegment(from: rayOrigin, to: rayEnd, options: hitTestOptions)
-        return !hitResults.isEmpty
+        
+        // Se ci sono più hit, scegliamo quello più vicino al punto di partenza
+        if let closestHit = hitResults.min(by: { $0.worldCoordinates.z < $1.worldCoordinates.z }) {
+            print("📍 Nodo più vicino trovato: \(closestHit.node.name ?? "Sconosciuto") a \(closestHit.worldCoordinates)")
+            return true
+        }
+        
+        return false
     }
     
     func addDebugMarker(at position: SCNVector3, color: UIColor, scene: SCNScene) {
