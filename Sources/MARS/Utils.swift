@@ -48,11 +48,14 @@ func generatePositionNode(_ color: UIColor, _ radius: CGFloat) -> SCNNode {
 
 @MainActor
 func applyRotoTraslation(to node: SCNNode, with rotoTraslation: RotoTraslationMatrix) {
-
+    
     let combinedMatrix = rotoTraslation.translation * rotoTraslation.r_Y
     node.simdWorldTransform = combinedMatrix * node.simdWorldTransform
-
+    
+    print("Floor Position:\n")
     printSimdFloat4x4(node.simdWorldTransform)
+    print("Moltiplicate for:\n")
+    printSimdFloat4x4(combinedMatrix)
 }
 
 @available(iOS 16.0, *)
@@ -131,7 +134,7 @@ private func createSceneNode(from scene: SCNScene, roomName: String) -> SCNNode 
         case "Bettini":
             material.diffuse.contents = UIColor.blue.withAlphaComponent(0.2)
         default:
-            material.diffuse.contents = UIColor.white.withAlphaComponent(0.2)
+            material.diffuse.contents = UIColor.white.withAlphaComponent(0)
         }
         floorNode.geometry?.materials = [material]
         
@@ -164,7 +167,7 @@ private func createSceneNode(from scene: SCNScene, roomName: String) -> SCNNode 
     sphereMaterial.diffuse.contents = UIColor.orange
     sphereGeometry.materials = [sphereMaterial]
     sphereNode.geometry = sphereGeometry
-    containerNode.addChildNode(sphereNode)
+    //containerNode.addChildNode(sphereNode)
     
     // Imposta il pivot sul puntino arancione
     if let markerNode = containerNode.childNode(withName: "SceneCenterMarker", recursively: true) {

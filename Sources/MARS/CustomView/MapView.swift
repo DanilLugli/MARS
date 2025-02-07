@@ -29,7 +29,7 @@ public struct MapView: View {
                     .ignoresSafeArea()
                 
                 if locationProvider.markerFounded == false{
-                    Color.black.opacity(0.6)
+                    Color.black.opacity(0.7)
                         .edgesIgnoringSafeArea(.all)
                 }
                 
@@ -122,22 +122,14 @@ public struct MapView: View {
 
                             VStack{
                                 Image(systemName: "camera.viewfinder")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 100, height: 100)
-                                    .foregroundColor(.white)
-                                    .scaleEffect(scale)
-                                    .animation(
-                                        Animation.easeInOut(duration: 1.5)
-                                            .repeatForever(autoreverses: true),
-                                        value: scale
-                                    )
-                                    .onAppear {
-                                        scale = 1.4
-                                    }
+                                                .resizable()
+                                                .scaledToFit()
+                                                .frame(width: 100, height: 100)
+                                                .foregroundColor(.white)
+                                                .symbolEffect(.pulse, options: .repeat(500)) // 🔥 Animazione con Impulso
                                 
-                                Text("Searching Marker...")
-                                    .font(.title3)
+                                Text("Point the Camera at the Marker")
+                                    .font(.caption)
                                     .bold()
                                     .foregroundColor(.white)
                                     .padding(.top, 24)
@@ -208,7 +200,8 @@ public struct MapView: View {
                     title: "Changed Floor",
                     subTitle: "You have changed floor"
                 )
-            }.toast(isPresenting: $fileHandler.isErrorMatrix, duration: 5.0) {
+            }
+            .toast(isPresenting: $fileHandler.isErrorMatrix, duration: 5.0) {
                 AlertToast(
                     displayMode: .hud,
                     type: .systemImage("exclamationmark.triangle", .red),

@@ -21,7 +21,9 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
 
     let delegate: ARSCNDelegate = ARSCNDelegate()
     let motionManager = CMMotionManager()
-
+    
+    var changeStateBool: Bool = false
+    
     var markers: Set<ARReferenceImage>
     var firstPrint: Bool = false
 
@@ -82,8 +84,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     public func start() {
         ARSessionManager.shared.configureForImageTracking(with: self.building.detectionImages)
     }
-    
-    
+
     func findRoomFromMarker(markerName: String){
            
         for floor in self.building.floors {
@@ -123,16 +124,23 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
 
         switch switchingRoom {
         case false:
+
             self.position = newPosition
             self.trackingState = newTrackingState
             
             self.roomMatrixActive = self.activeRoom.name
-
+            
             scnRoomView.updatePosition(self.position, nil, floor: self.activeFloor)
-            scnFloorView.updatePosition(self.position, self.activeFloor.associationMatrix[self.activeRoom.name], floor: self.activeFloor)
+            if changeStateBool == false{
+                scnFloorView.updatePosition(self.position, self.activeFloor.associationMatrix[self.activeRoom.name], floor: self.activeFloor)
+            }
+            countNormal += 1
+            if countNormal == 30{
+                changeStateBool = false
+            }
 
             if let posFloorNode = scnFloorView.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_FLOOR" }) {
-                
+
                 self.lastFloorPosition = posFloorNode.simdWorldTransform
                 self.lastFloorAngle = getRotationAngles(from: posFloorNode.simdWorldTransform).yaw
                 self.offMatrix = updateMatrixWithYawTest(matrix: self.lastFloorPosition,  yawRadians: self.lastFloorAngle)
@@ -140,15 +148,15 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             } else {
                 self.lastFloorPosition = simd_float4x4(1)
             }
+
             readyToChange = false
             checkSwitchRoom(state: true)
             checkSwitchFloor()
-            
+
         case true:
-            print("WORKING HERE")
+            countNormal = 0
             self.position = newPosition
             self.trackingState = newTrackingState
-
             
             print("T.S.: \(newTrackingState)")
 
@@ -165,6 +173,9 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
           
             if readyToChange{
                 self.switchingRoom = (newTrackingState != "Normal")
+                if self.switchingRoom == false{
+                    changeStateBool = true
+                }
             }
             
             checkSwitchRoom(state: true)
@@ -205,6 +216,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             } else {
                 self.activeRoom = prevRoom
             }
+            print("CHANGE ROOM: From \(prevRoom.name) to \(self.activeRoom.name)")
             
             ARSessionManager.shared.configureForWorldMap(with: activeRoom)
 
@@ -236,7 +248,11 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
                     prevRoom = activeRoom
                     self.activeFloor = nextFloor
                     self.activeRoom = nextRoom
-
+                    
+                    let roomNames = activeFloor.rooms.map { $0.name }
+                    scnRoomView.loadPlanimetry(scene: activeRoom, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
+                    scnFloorView.loadPlanimetry(scene: activeFloor, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
+                    
                     ARSessionManager.shared.configureForWorldMap(with: activeRoom)
                     
                     showChangeFloorToast = true

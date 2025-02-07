@@ -39,9 +39,11 @@ public struct SCNViewContainer: UIViewRepresentable {
         if let roomScene = scene as? Room {
             loadScene(from: roomScene.roomURL, name: roomScene.name, type: "Room")
             addLocationNode(scnView: self.scnView)
+            setCamera(scnView: self.scnView, cameraNode: self.cameraNode, massCenter: self.massCenter)
         } else if let floorScene = scene as? Floor {
             loadScene(from: floorScene.floorURL, name: floorScene.name, type: "Floor")
             MARS.addFloorLocationNode(scnView: self.scnView)
+            setCameraFollowPosition(scnView: self.scnView, cameraNode: cameraNode)
         } else {
             print("The provided scene is neither a Room nor a Floor.")
         }
@@ -51,7 +53,6 @@ public struct SCNViewContainer: UIViewRepresentable {
         
         setMassCenter()
         
-        setCamera(scnView: self.scnView, cameraNode: self.cameraNode, massCenter: self.massCenter)
         if let rootNode = self.scnView.scene?.rootNode {
             for child in rootNode.childNodes {
                 if child.name?.prefix(3) != "POS"{
@@ -94,61 +95,56 @@ public struct SCNViewContainer: UIViewRepresentable {
     }
 
     func drawSceneObjects(borders: Bool) {
-        
         var drawnNodes = Set<String>()
-        
+
+        let nodeMaterials: [String: UIColor] = [
+            "Floor0": .green,
+            "Floor": .white.withAlphaComponent(0),
+            "Transi": .white,
+            "Door": .white,
+            "Open": .white,
+            "Tabl": .brown,
+            "Chai": .brown.withAlphaComponent(0.4),
+            "Stor": .systemGray,
+            "Sofa": UIColor(red: 0.0, green: 0.0, blue: 0.5, alpha: 0.6),
+            "Tele": .orange
+        ]
+
         scnView.scene?
             .rootNode
-            .childNodes(passingTest: { n, _ in
-                n.name != nil &&
-                n.name! != "Room" &&
-                n.name! != "Floor0" &&
-                n.name! != "Geom" &&
-                String(n.name!.suffix(4)) != "_grp" &&
-                n.name! != "__selected__"
+            .childNodes(passingTest: { node, _ in
+                guard let nodeName = node.name else { return false }
+                return nodeName != "Room" &&
+                       nodeName != "Floor0" &&
+                       nodeName != "Geom" &&
+                       !nodeName.hasSuffix("_grp") &&
+                       nodeName != "__selected__"
             })
-            .forEach {
-                let nodeName = $0.name
+            .forEach { node in
+                guard let nodeName = node.name else { return }
+                
                 let material = SCNMaterial()
-                if nodeName == "Floor0" {
-                    material.diffuse.contents = UIColor.green
-                } else {
-                    material.diffuse.contents = UIColor.black
-                    if nodeName?.prefix(5) == "Floor" {
-                        material.diffuse.contents = UIColor.white.withAlphaComponent(0.2)
-                    }
-                    if nodeName!.prefix(6) == "Transi" {
-                        material.diffuse.contents = UIColor.white
-                    }
-//                    if nodeName!.prefix(4) == "Wall" {
-//                        material.diffuse.contents = UIColor.white.withAlphaComponent(0)
-//                    }
-                    if nodeName!.prefix(4) == "Door" {
-                        material.diffuse.contents = UIColor.white
-                    }
-                    if nodeName!.prefix(4) == "Open"{
-                        material.diffuse.contents = UIColor.systemGray5
-                    }
-                    if nodeName!.prefix(4) == "Tabl" {
-                        material.diffuse.contents = UIColor.brown
-                    }
-                    if nodeName!.prefix(4) == "Chai"{
-                        material.diffuse.contents = UIColor.brown.withAlphaComponent(0.4)
-                    }
-                    if nodeName!.prefix(4) == "Stor"{
-                        material.diffuse.contents = UIColor.systemGray
-                    }
-                    if nodeName!.prefix(4) == "Sofa"{
-                        material.diffuse.contents = UIColor(red: 0.0, green: 0.0, blue: 0.5, alpha: 0.6)
-                    }
-                    if nodeName!.prefix(4) == "Tele"{
-                        material.diffuse.contents = UIColor.orange
-                    }
-                    material.lightingModel = .physicallyBased
-                    $0.geometry?.materials = [material]
-                    
+                material.diffuse.contents = nodeMaterials.first { nodeName.hasPrefix($0.key) }?.value ?? UIColor.black
+                material.lightingModel = .physicallyBased
+
+                if nodeName.hasPrefix("Wall") {
+                    node.scale = SCNVector3(node.scale.x,
+                                            node.scale.y,
+                                            node.scale.z * 0.7)
                 }
-                drawnNodes.insert(nodeName!)
+
+                if nodeName.hasPrefix("Door") || nodeName.hasPrefix("Open") {
+                    // Rialza di 2 metri
+                    node.position.y += 2.0
+                    
+                    // Ingrandisci di un fattore 1.5 in tutte le dimensioni
+                    node.scale = SCNVector3(node.scale.x,
+                                            node.scale.y,
+                                            node.scale.z * 3)
+                }
+                
+                node.geometry?.materials = [material]
+                drawnNodes.insert(nodeName)
             }
     }
 
@@ -251,6 +247,55 @@ public struct SCNViewContainer: UIViewRepresentable {
         scnView.pointOfView = cameraNode
         scnView.scene?.rootNode.addChildNode(cameraNode)
         cameraNode.constraints = []
+    }
+    
+    func setCameraFollowPosition(scnView: SCNView, cameraNode: SCNNode) {
+        // 1) Crea la camera
+        cameraNode.camera = SCNCamera()
+        cameraNode.camera?.usesOrthographicProjection = true
+        cameraNode.camera?.orthographicScale = 5
+        
+        // Rimuovi eventuali luci ambient già presenti
+        scnView.scene?.rootNode.childNodes
+            .filter { $0.light?.type == .ambient }
+            .forEach { $0.removeFromParentNode() }
+
+        // Aggiungi una luce ambient
+        let ambientLight = SCNNode()
+        ambientLight.light = SCNLight()
+        ambientLight.light?.type = .ambient
+        ambientLight.light?.color = UIColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1.0)
+        ambientLight.light?.intensity = 1200
+        scnView.scene?.rootNode.addChildNode(ambientLight)
+
+        // 2) Aggiungi il cameraNode alla scena e impostalo come pointOfView
+        scnView.scene?.rootNode.addChildNode(cameraNode)
+        scnView.pointOfView = cameraNode
+        
+        // 3) Crea un constraint per seguire il nodo "POS_FLOOR"
+        let followFloorConstraint = SCNTransformConstraint(inWorldSpace: true) { cameraNode, _ in
+            // Trova il nodo con name == "POS_FLOOR"
+            guard let floorNode = scnView.scene?.rootNode.childNode(withName: "POS_FLOOR", recursively: true) else {
+                // Se non esiste, nessun aggiornamento. Ritorno la transform attuale.
+                return cameraNode.transform
+            }
+
+            // Imposta la camera 10 metri sopra al floorNode
+            cameraNode.worldPosition = SCNVector3(
+                floorNode.worldPosition.x,
+                floorNode.worldPosition.y + 10,  // Regola "altezza" a piacere
+                floorNode.worldPosition.z
+            )
+
+            // Orienta la camera guardando in basso (asse -y)
+            // In questo esempio ruotiamo di -90° intorno all'asse X
+            cameraNode.eulerAngles = SCNVector3(-Float.pi / 2, 0, 0)
+
+            return cameraNode.transform
+        }
+        
+        // 4) Assegna il constraint al cameraNode
+        cameraNode.constraints = [followFloorConstraint]
     }
 
 
@@ -460,7 +505,8 @@ public struct SCNViewContainer: UIViewRepresentable {
     func updatePosition(_ newPosition: simd_float4x4, _ matrix: RotoTraslationMatrix?, floor: Floor) {
         
         if matrix == nil {
-
+            print("Room Position:\n")
+            printSimdFloat4x4(newPosition)
             self.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_ROOM" })?.simdWorldTransform = newPosition
             self.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_FLOOR" })?.simdWorldTransform = newPosition
             
