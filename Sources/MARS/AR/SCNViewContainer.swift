@@ -43,7 +43,7 @@ public struct SCNViewContainer: UIViewRepresentable {
         } else if let floorScene = scene as? Floor {
             loadScene(from: floorScene.floorURL, name: floorScene.name, type: "Floor")
             MARS.addFloorLocationNode(scnView: self.scnView)
-            setCameraFollowPosition(scnView: self.scnView, cameraNode: cameraNode)
+            setCamera(scnView: self.scnView, cameraNode: cameraNode,  massCenter: self.massCenter)
         } else {
             print("The provided scene is neither a Room nor a Floor.")
         }
