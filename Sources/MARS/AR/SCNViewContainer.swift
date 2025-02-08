@@ -249,6 +249,7 @@ public struct SCNViewContainer: UIViewRepresentable {
         cameraNode.constraints = []
     }
     
+    @MainActor
     func setCameraFollowPosition(scnView: SCNView, cameraNode: SCNNode) {
         // 1) Crea la camera
         cameraNode.camera = SCNCamera()
