@@ -28,11 +28,48 @@ public struct MapView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
                 
-                if locationProvider.markerFounded == false{
-                    Color.black.opacity(0.7)
-                        .edgesIgnoringSafeArea(.all)
+                VStack{
+                    if !locationProvider.markerFounded{
+                        HStack {
+                            Image(systemName: "photo")
+                                .bold()
+                                .font(.system(size: 18))
+                                .foregroundColor(.black)
+                            
+                            Text("Scan the Marker")
+                                .font(.system(size: 18, weight: .bold, design: .default))
+                                .foregroundColor(.black)
+                        }
+                        .padding()
+                        .background(Color.white)
+                        .cornerRadius(20)
+                        .shadow(radius: 5)
+                        .padding(.top, 80)
+                        .frame(maxWidth: .infinity)
+
+
+                    }
+                    if locationProvider.firstLocalization{
+                        HStack {
+                            Image(systemName: "mappin.and.ellipse")
+                                .bold()
+                                .font(.system(size: 18))
+                                .foregroundColor(.black)
+                            
+                            Text("Re-Localization")
+                                .font(.system(size: 18, weight: .bold, design: .default))
+                                .foregroundColor(.black)
+                        }
+                        .padding()
+                        .background(Color.white)
+                        .cornerRadius(20)
+                        .shadow(radius: 5)
+                        .padding(.top, 80)
+                        .frame(maxWidth: .infinity)
+                        
+                        }
+                    Spacer()
                 }
-                
                 
                 switch debug {
                     
@@ -45,11 +82,10 @@ public struct MapView: View {
                             
                             roomMap: locationProvider.activeRoom.name,
                             matrixMap: locationProvider.roomMatrixActive,
-                            actualPosition: locationProvider.lastFloorPosition,
+                            actualPosition: locationProvider.position,
                             trackingState: locationProvider.trackingState,
                             nodeContainedIn: locationProvider.nodeContainedIn,
                             switchingRoom: locationProvider.switchingRoom
-                            
                         )
                         .padding(.top, 60)
                         
@@ -119,21 +155,7 @@ public struct MapView: View {
                 case false:
                     VStack {
                         if locationProvider.markerFounded == false{
-
-                            VStack{
-                                Image(systemName: "camera.viewfinder")
-                                                .resizable()
-                                                .scaledToFit()
-                                                .frame(width: 100, height: 100)
-                                                .foregroundColor(.white)
-                                                .symbolEffect(.pulse, options: .repeat(500)) // 🔥 Animazione con Impulso
-                                
-                                Text("Point the Camera at the Marker")
-                                    .font(.caption)
-                                    .bold()
-                                    .foregroundColor(.white)
-                                    .padding(.top, 24)
-                            }
+                            //
                         }
                         else{
                             
@@ -141,10 +163,13 @@ public struct MapView: View {
                             
                             VStack {
                                 HStack {
-                                    locationProvider.scnFloorView
-                                        .frame(width: 380, height: 200)
-                                        .cornerRadius(20)
-                                        .padding(.bottom, 20)
+                                    if !locationProvider.firstLocalization{
+                                        locationProvider.scnFloorView
+                                            .frame(width: 380, height: 200)
+                                            .cornerRadius(20)
+                                            .padding(.bottom, 20)
+                                    }
+                                    
                                 }
                                 
                                 HStack {
@@ -185,14 +210,14 @@ public struct MapView: View {
                     subTitle: "You have been located in \(locationProvider.activeRoom.name)"
                 )
             }
-            .toast(isPresenting: $fileHandler.isLoadingComplete, duration: 5.0) {
-                AlertToast(
-                    displayMode: .hud,
-                    type: .systemImage("exclamationmark.triangle", .red),
-                    title: "Error Connection",
-                    subTitle: "You have 2/more Floor but no connections."
-                )
-            }
+//            .toast(isPresenting: $fileHandler.isLoadingComplete, duration: 5.0) {
+//                AlertToast(
+//                    displayMode: .hud,
+//                    type: .systemImage("exclamationmark.triangle", .red),
+//                    title: "Error Connection",
+//                    subTitle: "You have 2/more Floor but no connections."
+//                )
+//            }
             .toast(isPresenting: $locationProvider.showChangeFloorToast, duration: 5.0) {
                 AlertToast(
                     displayMode: .hud,

@@ -1,8 +1,13 @@
 //
-//  File.swift
+//  PositionProvider.swift
 //  MARS
 //
 //  Created by Danil Lugli on 15/10/24.
+//
+//  Questo file contiene la classe PositionProvider,
+//  che gestisce il tracciamento della posizione e il cambio di room/floor,
+//  suddividendo le funzionalità in sezioni logiche tramite MARK.
+//  (Puoi spostare le varie sezioni in file separati se lo ritieni opportuno)
 //
 
 import SwiftUI
@@ -13,24 +18,27 @@ import Accelerate
 import CoreMotion
 
 @available(iOS 16.0, *)
-public class PositionProvider: PositionSubject, LocationObserver, @preconcurrency Hashable, ObservableObject, PositionObserver{
+public class PositionProvider: PositionSubject, LocationObserver, @preconcurrency Hashable, ObservableObject, PositionObserver {
+
+    // MARK: - Proprietà
 
     public var id: UUID = UUID()
-
     public let building: Building
 
     let delegate: ARSCNDelegate = ARSCNDelegate()
     let motionManager = CMMotionManager()
     
     var changeStateBool: Bool = false
-    
     var markers: Set<ARReferenceImage>
     var firstPrint: Bool = false
-
     var positionObservers: [PositionObserver]
     
     var countNormal: Int = 0
+    var countNormalCheckRoomFloor: Int = 0
     var readyToChange: Bool = false
+    var lastKnownPosition: simd_float4x4 = simd_float4x4(1)
+    var firstLocalization: Bool = false
+    var reLocalizingFrameCount = 0
 
     @Published var position: simd_float4x4 = simd_float4x4(0)
     @Published var trackingState: String = ""
@@ -49,7 +57,6 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     @Published var activeFloor: Floor = Floor()
     
     @Published var markerFounded: Bool = false
-    
     @Published var showMarkerFoundedToast: Bool = false
     @Published var showChangeFloorToast: Bool = false
 
@@ -61,7 +68,9 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     var floorNodePosition: SCNNode = SCNNode()
     var lastFloorPosition: simd_float4x4 = simd_float4x4(1)
     var lastFloorAngle: Float = 0.0
-    
+
+    // MARK: - Inizializzazione
+
     public init(data: URL, arSCNView: ARSCNView) {
         self.positionObservers = []
         self.markers = []
@@ -76,26 +85,106 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             self.building = Building()
         }
         
-        
         self.delegate.positionProvider = self
         self.delegate.addLocationObserver(positionObserver: self)
     }
+    
+    // MARK: - Gestione della Sessione AR
 
+    /// Configura la sessione AR per il tracciamento delle immagini
     public func start() {
         ARSessionManager.shared.configureForImageTracking(with: self.building.detectionImages)
     }
+    
+    // MARK: - Aggiornamento della Posizione e Tracking
+    @MainActor
+    public func onLocationUpdate(_ newPosition: simd_float4x4, _ newTrackingState: String) {
+        switch switchingRoom {
+        case false:
+            self.position = newPosition
+            self.trackingState = newTrackingState
+            self.roomMatrixActive = self.activeRoom.name
+            
+            ARSessionManager.shared.coachingOverlay.setActive(false, animated: true)
+            reLocalizingFrameCount = 0
+            
+            updateTrackingState(newState: newTrackingState)
+            
+            scnRoomView.updatePosition(self.position, nil, floor: self.activeFloor)
+            if !changeStateBool {
+            scnFloorView.updatePosition(self.position, self.activeFloor.associationMatrix[self.activeRoom.name], floor: self.activeFloor)
+            }
+            
+            countNormal += 1
+            if countNormal == 10 {
+                changeStateBool = false
+            }
+            
+            if let posFloorNode = scnFloorView.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_FLOOR" }) {
+                self.lastFloorPosition = posFloorNode.simdWorldTransform
+                self.lastFloorAngle = getRotationAngles(from: posFloorNode.simdWorldTransform).yaw
+                self.offMatrix = updateMatrixWithYawTest(matrix: self.lastFloorPosition, yawRadians: self.lastFloorAngle)
+            } else {
+                self.lastFloorPosition = simd_float4x4(1)
+            }
+            
+            readyToChange = false
+            countNormalCheckRoomFloor += 1
+            
+            if countNormalCheckRoomFloor >= 40 {
+                checkSwitchRoom(state: true)
+                checkSwitchFloor()
+                countNormalCheckRoomFloor = 0
+            }
+            
+        case true:
+            countNormal = 0
+            lastKnownPosition = position
+            position = newPosition
+            trackingState = newTrackingState
 
-    func findRoomFromMarker(markerName: String){
-           
+            positionOffTracking = calculatePositionOffTracking(lastFloorPosition: lastFloorPosition, newPosition: newPosition)
+            scnRoomView.updatePosition(newPosition, nil, floor: activeFloor)
+
+            if trackingState == "Re-Localizing..." {
+                reLocalizingFrameCount += 1 // Incrementa il contatore dei frame in cui è in "Re-Localizing..."
+                
+                if reLocalizingFrameCount >= 120 {
+                    ARSessionManager.shared.coachingOverlay.setActive(true, animated: true)
+                }
+
+                scnFloorView.updatePosition(positionOffTracking, nil, floor: activeFloor)
+                readyToChange = true
+            } else {
+                reLocalizingFrameCount = 0 
+            }
+
+            if readyToChange {
+                switchingRoom = (newTrackingState != "Normal")
+                changeStateBool = !switchingRoom
+            }
+            
+
+        default:
+            break
+        }
+    }
+    
+    // MARK: - Riconoscimento e Cambio Room/Floor
+
+    /// Cerca la room corrispondente a un marker e la gestisce
+    func findRoomFromMarker(markerName: String) {
         for floor in self.building.floors {
             for room in floor.rooms {
                 if room.referenceMarkers.contains(where: { $0.name == markerName }) {
                     self.roomRecognized(room)
+                    return
                 }
             }
         }
     }
     
+    /// Imposta la room riconosciuta e aggiorna le viste corrispondenti
     func roomRecognized(_ room: Room) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -106,107 +195,39 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             self.prevRoom = room
 
             let roomNodes = self.activeFloor.rooms.map { $0.name }
-
-            self.scnFloorView.loadPlanimetry(scene: self.activeFloor, roomsNode: roomNodes, borders: true, nameCaller: self.activeFloor.name)
             
+            self.scnFloorView.loadPlanimetry(scene: self.activeFloor, roomsNode: roomNodes, borders: true, nameCaller: self.activeFloor.name)
             self.scnRoomView.loadPlanimetry(scene: self.activeRoom, roomsNode: nil, borders: true, nameCaller: self.activeRoom.name)
-
+            
             addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
-
+            
             self.arSCNView.startARSCNView(with: self.activeRoom, for: false, from: self.building)
-
             self.markerFounded = true
+            firstLocalization = true
             self.showMarkerFoundedToast = true
         }
     }
     
-    public func onLocationUpdate(_ newPosition: simd_float4x4, _ newTrackingState: String) {
-
-        switch switchingRoom {
-        case false:
-
-            self.position = newPosition
-            self.trackingState = newTrackingState
-            
-            self.roomMatrixActive = self.activeRoom.name
-            
-            scnRoomView.updatePosition(self.position, nil, floor: self.activeFloor)
-            if changeStateBool == false{
-                scnFloorView.updatePosition(self.position, self.activeFloor.associationMatrix[self.activeRoom.name], floor: self.activeFloor)
-            }
-            countNormal += 1
-            if countNormal == 30{
-                changeStateBool = false
-            }
-
-            if let posFloorNode = scnFloorView.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_FLOOR" }) {
-
-                self.lastFloorPosition = posFloorNode.simdWorldTransform
-                self.lastFloorAngle = getRotationAngles(from: posFloorNode.simdWorldTransform).yaw
-                self.offMatrix = updateMatrixWithYawTest(matrix: self.lastFloorPosition,  yawRadians: self.lastFloorAngle)
-
-            } else {
-                self.lastFloorPosition = simd_float4x4(1)
-            }
-
-            readyToChange = false
-            checkSwitchRoom(state: true)
-            checkSwitchFloor()
-
-        case true:
-            countNormal = 0
-            self.position = newPosition
-            self.trackingState = newTrackingState
-            
-            print("T.S.: \(newTrackingState)")
-
-            positionOffTracking = calculatePositionOffTracking(lastFloorPosition: self.lastFloorPosition, newPosition: newPosition)
-
-            scnRoomView.updatePosition(newPosition, nil, floor: activeFloor)
-            if self.trackingState == "Re-Localizing..."{
-                scnFloorView.updatePosition(positionOffTracking, nil, floor: activeFloor)
-                readyToChange = true
-                
-                //TODO: EDGE CASE, Cambio Room che sei ancora in 'Re-Localizing...', fare doppio calcolo Matrice & Angolo e variabile booleana di controllo
-                //checkSwitchRoom(state: false)
-            }
-          
-            if readyToChange{
-                self.switchingRoom = (newTrackingState != "Normal")
-                if self.switchingRoom == false{
-                    changeStateBool = true
-                }
-            }
-            
-            checkSwitchRoom(state: true)
-
-        default:
-            break
-        }
-        
-    }
-    
+    /// Controlla se il nodo di posizione appartiene ad una nuova room
     func checkSwitchRoom(state: Bool) {
-        
         guard let posFloorNode = scnFloorView.scnView.scene?.rootNode.childNode(withName: "POS_FLOOR", recursively: true) else {
             return
         }
         
-        var roomsNode = getNodesMatchingRoomNames(from: activeFloor, in: scnFloorView.scnView)
-        
-        for room in roomsNode{
+        // Recupera tutti i nodi che corrispondono ai nomi delle room del floor attivo
+        let roomsNode = getNodesMatchingRoomNames(from: activeFloor, in: scnFloorView.scnView)
+        for room in roomsNode {
             print(room.name)
         }
         
         let nextRoomName = findPositionContainer(for: posFloorNode.worldPosition)?.name ?? "Error Contained"
         self.nodeContainedIn = nextRoomName
         
-
         if nextRoomName != activeRoom.name, activeFloor.rooms.contains(where: { $0.name == nextRoomName }) {
-            
+            if nextRoomName == "Error Contained" { return }
             self.switchingRoom = true
             
-            if state{
+            if state {
                 prevRoom = activeRoom
                 self.roomMatrixActive = prevRoom.name
             }
@@ -216,176 +237,129 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             } else {
                 self.activeRoom = prevRoom
             }
-            print("CHANGE ROOM: From \(prevRoom.name) to \(self.activeRoom.name)")
             
+            print("CHANGE ROOM: From \(prevRoom.name) to \(self.activeRoom.name)")
             ARSessionManager.shared.configureForWorldMap(with: activeRoom)
-
+            
             let roomNames = activeFloor.rooms.map { $0.name }
             scnRoomView.loadPlanimetry(scene: activeRoom, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
-            
         } else {
             print("No change Room: \(self.nodeContainedIn)")
         }
-        
     }
     
+    /// Verifica se bisogna passare ad un nuovo floor, in base all'altezza del nodo POS_ROOM
     func checkSwitchFloor() {
-        guard let posRoomNode = scnRoomView.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_ROOM" }) else {
+        guard let posFloorNode = scnFloorView.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_FLOOR" }) else {
             return
         }
-
+        
         for connection in self.activeRoom.connections {
-            if posRoomNode.simdWorldTransform.columns.3.y >= connection.altitude - 0.5 &&
-               posRoomNode.simdWorldTransform.columns.3.y <= connection.altitude + 0.5 {
+            if posFloorNode.simdWorldTransform.columns.3.y >= connection.altitude - 0.5 &&
+                posFloorNode.simdWorldTransform.columns.3.y <= connection.altitude + 0.5 {
                 
                 let nextFloorName = connection.targetFloor
+                print("Next Floor Name: \(nextFloorName)")
                 let nextRoomName = connection.targetRoom
-
+                print("Next Room Name: \(nextRoomName)")
+                
                 if nextRoomName != activeRoom.name, nextFloorName != activeFloor.name,
                    let nextFloor = Floor.getFloorByName(from: building.floors, name: nextFloorName),
                    let nextRoom = nextFloor.getRoom(byName: nextRoomName) {
                     
                     prevRoom = activeRoom
+                    print("DEBUG OK -> Next Floor: \(nextFloor.name)")
+                    print("DEBUG OK -> Next Room: \(nextRoom.name)")
                     self.activeFloor = nextFloor
                     self.activeRoom = nextRoom
                     
                     let roomNames = activeFloor.rooms.map { $0.name }
+                    
                     scnRoomView.loadPlanimetry(scene: activeRoom, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
                     scnFloorView.loadPlanimetry(scene: activeFloor, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
                     
                     ARSessionManager.shared.configureForWorldMap(with: activeRoom)
-                    
                     showChangeFloorToast = true
+                    
                 }
             }
         }
     }
+    
+    private var previousTrackingState: String = ""
 
-    func calculatePositionOffTracking( lastFloorPosition: simd_float4x4, newPosition: simd_float4x4) -> simd_float4x4 {
+    func updateTrackingState(newState: String) {
+        if previousTrackingState == "Re-Localizing..." && newState == "Normal" {
+            firstLocalization = false
+            ARSessionManager.shared.coachingOverlay.setActive(false, animated: true)
+        }
+        
+        // Aggiorna lo stato precedente per il prossimo confronto
+        previousTrackingState = newState
+        
+    }
+    
+    // MARK: - Operazioni su Matrici e Trasformazioni
+
+    /// Restituisce true se la distanza in piano XZ tra due trasformazioni è >= 1 metro
+    func checkDifferentMovement(from lastPosition: simd_float4x4,
+                                   to actualPosition: simd_float4x4) -> Bool {
+        let posA = simd_make_float3(lastPosition.columns.3)
+        let posB = simd_make_float3(actualPosition.columns.3)
+        let dx = posB.x - posA.x
+        let dz = posB.z - posA.z
+        let distanceXZ = sqrtf(dx * dx + dz * dz)
+        return distanceXZ >= 1.0
+    }
+    
+    /// Calcola la posizione off-tracking usando la matrice “offMatrix”
+    func calculatePositionOffTracking(lastFloorPosition: simd_float4x4, newPosition: simd_float4x4) -> simd_float4x4 {
         positionOffTracking = offMatrix * newPosition
         return positionOffTracking
     }
-
+    
+    /// Aggiorna la matrice sostituendo le prime tre colonne con quelle di una rotazione attorno all’asse Y
     func updateMatrixWithYawTest(matrix: simd_float4x4, yawRadians: Float) -> simd_float4x4 {
-
         let rotationY = simd_float3x3(
-            simd_make_float3(cos(yawRadians), 0, -sin(yawRadians)), // X
-            simd_make_float3(0, 1, 0),                              // Y
-            simd_make_float3(sin(yawRadians), 0, cos(yawRadians))   // Z
+            simd_make_float3(cos(yawRadians), 0, -sin(yawRadians)), // asse X
+            simd_make_float3(0, 1, 0),                               // asse Y
+            simd_make_float3(sin(yawRadians), 0, cos(yawRadians))     // asse Z
         )
-
         var combinedMatrix = matrix // Copia la matrice originale
-
-        combinedMatrix.columns.0 = simd_make_float4(rotationY.columns.0, 0) // Prima colonna
-        combinedMatrix.columns.1 = simd_make_float4(rotationY.columns.1, 0) // Seconda colonna
-        combinedMatrix.columns.2 = simd_make_float4(rotationY.columns.2, 0) // Terza colonna
-
+        combinedMatrix.columns.0 = simd_make_float4(rotationY.columns.0, 0)
+        combinedMatrix.columns.1 = simd_make_float4(rotationY.columns.1, 0)
+        combinedMatrix.columns.2 = simd_make_float4(rotationY.columns.2, 0)
         combinedMatrix.columns.3 = matrix.columns.3
-
         return combinedMatrix
     }
-
+    
+    /// Crea una matrice che combina una traslazione e una rotazione attorno all’asse Y
     func createRotoTranslationMatrix(translation: simd_float3, angleY: Float) -> simd_float4x4 {
         let cosAngle = cos(angleY)
         let sinAngle = sin(angleY)
-
         let rotationMatrix = simd_float4x4(
             simd_float4(cosAngle, 0, sinAngle, 0),
             simd_float4(0, 1, 0, 0),
             simd_float4(-sinAngle, 0, cosAngle, 0),
             simd_float4(0, 0, 0, 1)
         )
-
         var translationMatrix = simd_float4x4(1)
         translationMatrix.columns.3 = simd_float4(translation.x, translation.y, translation.z, 1)
-
         return translationMatrix * rotationMatrix
     }
     
+    /// Estrae gli angoli di rotazione (roll, pitch, yaw) da una matrice 4x4
     func getRotationAngles(from matrix: simd_float4x4) -> (roll: Float, pitch: Float, yaw: Float) {
-        // Calcola Pitch (rotazione attorno all'asse X)
         let pitch = atan2(-matrix[2][1], sqrt(matrix[0][1] * matrix[0][1] + matrix[1][1] * matrix[1][1]))
-        
-        // Calcola Yaw (rotazione attorno all'asse Y)
         let yaw = atan2(matrix[2][0], matrix[2][2])
-        
-        // Calcola Roll (rotazione attorno all'asse Z)
         let roll = atan2(matrix[0][1], matrix[1][1])
-        
         return (roll, pitch, yaw)
     }
-
-    public func printMatrix(){
-        
-        if cont == 0{
-            print("\nInitial Matrix (lastFloorPosition)")
-            printSimdFloat4x4(self.lastFloorPosition)
-            print("\n")
-            let rotationAngles = getRotationAngles(from: self.lastFloorPosition)
-            print("Roll: \(rotationAngles.roll.radiansToDegrees)°")
-            print("Pitch: \(rotationAngles.pitch.radiansToDegrees)°")
-            print("Yaw: \(rotationAngles.yaw.radiansToDegrees)°")
-            print("\n")
-
-            print("Last Matrix (self.position)")
-            printSimdFloat4x4(self.position)
-            print("\n")
-            let rotationAngles2 = getRotationAngles(from: self.position)
-            print("Roll: \(rotationAngles.roll.radiansToDegrees)°")
-            print("Pitch: \(rotationAngles.pitch.radiansToDegrees)°")
-            print("Yaw: \(rotationAngles.yaw.radiansToDegrees)°")
-            print("\n")
-            print("_____________________________________\n")
-        }
-        print("_____________________________________\n")
-        print("\nMatrix (self.position) n°: \(cont)")
-        printSimdFloat4x4(self.position)
-        print("\n")
-        let rotationAngles = getRotationAngles(from: self.position)
-        print("Roll: \(rotationAngles.roll.radiansToDegrees)°")
-        print("Pitch: \(rotationAngles.pitch.radiansToDegrees)°")
-        print("Yaw: \(rotationAngles.yaw.radiansToDegrees)°")
-        print("\n")
-        print("Matrix (positionOffTracking) n°: \(cont)")
-        printSimdFloat4x4(positionOffTracking)
-        print("\n")
-        let rotationAngles2 = getRotationAngles(from: self.positionOffTracking)
-        print("Roll: \(rotationAngles.roll.radiansToDegrees)°")
-        print("Pitch: \(rotationAngles.pitch.radiansToDegrees)°")
-        print("Yaw: \(rotationAngles.yaw.radiansToDegrees)°")
-        print("\n")
-
-        
-        cont+=1
-    }
-
-    public func printMatrix2(){
-        
-        print("_____________________________________\n")
-        print("\nMatrix (offMatrix) n°: \(cont)")
-        printSimdFloat4x4(offMatrix)
-        print("\n")
-        let rotationAngles = getRotationAngles(from: offMatrix)
-        print("Roll: \(rotationAngles.roll.radiansToDegrees)°")
-        print("Pitch: \(rotationAngles.pitch.radiansToDegrees)°")
-        print("Yaw: \(rotationAngles.yaw.radiansToDegrees)°")
-        print("\n")
-        print("Matrix (newPosition) n°: \(cont)")
-        printSimdFloat4x4(self.position)
-        print("\n")
-        let rotationAngles2 = getRotationAngles(from: self.position)
-        print("Roll: \(rotationAngles.roll.radiansToDegrees)°")
-        print("Pitch: \(rotationAngles.pitch.radiansToDegrees)°")
-        print("Yaw: \(rotationAngles.yaw.radiansToDegrees)°")
-        print("\n")
-        
-        cont+=1
-    }
     
+    /// Crea una matrice di rotazione attorno all’asse Y dato un angolo
     func createRotationMatrixY(angle: Float) -> simd_float4x4 {
         let cosAngle = cos(angle)
         let sinAngle = sin(angle)
-
         return simd_float4x4(
             simd_float4(cosAngle, 0, sinAngle, 0),
             simd_float4(0, 1, 0, 0),
@@ -393,43 +367,38 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             simd_float4(0, 0, 0, 1)
         )
     }
+    
+    // MARK: - Gestione dei Nodi nella Scena
 
+    /// Restituisce i nodi la cui proprietà name corrisponde a una delle room del floor
     @available(iOS 16.0, *)
     func getNodesMatchingRoomNames(from floor: Floor, in scnFloorView: SCNView) -> [SCNNode] {
-       
         let roomNames = Set(floor.rooms.map { $0.name })
-
         guard let rootNode = scnFloorView.scene?.rootNode else {
             print("La scena non ha un rootNode.")
             return []
         }
-
         let matchingNodes = rootNode.childNodes.filter { node in
             if let nodeName = node.name {
                 return roomNames.contains(nodeName)
             }
             return false
         }
-        
         return matchingNodes
     }
-
+    
+    /// Cerca, a partire da una posizione, il container (nodo) relativo a una room
     func findPositionContainer(for positionVector: SCNVector3) -> SCNNode? {
-
         let roomNames = Set(activeFloor.rooms.map { $0.name })
-
         for roomNode in scnFloorView.scnView.scene!.rootNode.childNodes {
             guard let floorNodeName = roomNode.name,
                   floorNodeName.starts(with: "Floor_"),
                   let roomName = floorNodeName.split(separator: "_").last,
                   roomNames.contains(String(roomName))
-            else {
-                continue
-            }
-
+            else { continue }
+            
             if let matchingChildNode = roomNode.childNode(withName: String(roomName), recursively: true) {
                 let localPosition = matchingChildNode.convertPosition(positionVector, from: nil)
-                
                 if isPositionContained(localPosition, in: matchingChildNode) {
                     return matchingChildNode
                 }
@@ -440,32 +409,27 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         return nil
     }
     
+    /// Verifica se una posizione (locale) è contenuta all'interno del nodo (usando un hit-test)
     private func isPositionContained(_ position: SCNVector3, in node: SCNNode) -> Bool {
-        guard let geometry = node.geometry else {
-            return false
-        }
-        
+        guard node.geometry != nil else { return false }
         let hitTestOptions: [String: Any] = [
             SCNHitTestOption.backFaceCulling.rawValue: false,
             SCNHitTestOption.boundingBoxOnly.rawValue: false,
             SCNHitTestOption.ignoreHiddenNodes.rawValue: false
         ]
-        
         let rayOrigin = position
         let rayDirection = SCNVector3(0, 0, 1)
         let rayEnd = PositionProvider.sum(lhs: rayOrigin, rhs: rayDirection)
-
         let hitResults = node.hitTestWithSegment(from: rayOrigin, to: rayEnd, options: hitTestOptions)
         
-        // Se ci sono più hit, scegliamo quello più vicino al punto di partenza
         if let closestHit = hitResults.min(by: { $0.worldCoordinates.z < $1.worldCoordinates.z }) {
-            print("📍 Nodo più vicino trovato: \(closestHit.node.name ?? "Sconosciuto") a \(closestHit.worldCoordinates)")
+            print("Nodo più vicino trovato: \(closestHit.node.name ?? "Sconosciuto") a \(closestHit.worldCoordinates)")
             return true
         }
-        
         return false
     }
     
+    /// Aggiunge un marker di debug (una sfera colorata) nella scena
     func addDebugMarker(at position: SCNVector3, color: UIColor, scene: SCNScene) {
         let sphere = SCNSphere(radius: 0.05)
         sphere.firstMaterial?.diffuse.contents = color
@@ -474,13 +438,16 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         scene.rootNode.addChildNode(markerNode)
     }
     
+    // MARK: - Pattern Osservatore
+
+    /// Mostra la mappa (vista SwiftUI) basata sulla posizione
     @MainActor
     public func showMap() -> some View {
         return MapView(locationProvider: self)
     }
-
+    
     func addLocationObserver(positionObserver: PositionObserver) {
-        if !self.positionObservers.contains(where: { $0.id == positionObserver.id}) {
+        if !self.positionObservers.contains(where: { $0.id == positionObserver.id }) {
             self.positionObservers.append(positionObserver)
         }
     }
@@ -488,17 +455,17 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     func removeLocationObserver(positionObserver: PositionObserver) {
         self.positionObservers = self.positionObservers.filter { $0.id != positionObserver.id }
     }
-
+    
     static private func sum(lhs: SCNVector3, rhs: SCNVector3) -> SCNVector3 {
         return SCNVector3(lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z)
     }
     
     public func onRoomChanged(_ newRoom: Room) {
-        // TODO: Manage new Room
+        // TODO: Gestire il cambio di room
     }
     
     public func onFloorChanged(_ newFloor: Floor) {
-        // TODO: Manage new Floor
+        // TODO: Gestire il cambio di floor
     }
     
     public func notifyRoomChanged(newRoom: Room) {
@@ -521,6 +488,75 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         }
     }
     
+    // MARK: - Metodi di Debug
+
+    public func printMatrix() {
+        if cont == 0 {
+            print("\nInitial Matrix (lastFloorPosition)")
+            printSimdFloat4x4(self.lastFloorPosition)
+            print("\n")
+            let rotationAngles = getRotationAngles(from: self.lastFloorPosition)
+            print("Roll: \(rotationAngles.roll.radiansToDegrees)°")
+            print("Pitch: \(rotationAngles.pitch.radiansToDegrees)°")
+            print("Yaw: \(rotationAngles.yaw.radiansToDegrees)°")
+            print("\n")
+            
+            print("Last Matrix (self.position)")
+            printSimdFloat4x4(self.position)
+            print("\n")
+            let rotationAngles2 = getRotationAngles(from: self.position)
+            print("Roll: \(rotationAngles2.roll.radiansToDegrees)°")
+            print("Pitch: \(rotationAngles2.pitch.radiansToDegrees)°")
+            print("Yaw: \(rotationAngles2.yaw.radiansToDegrees)°")
+            print("\n")
+            print("_____________________________________\n")
+        }
+        
+        print("_____________________________________\n")
+        print("\nMatrix (self.position) n°: \(cont)")
+        printSimdFloat4x4(self.position)
+        print("\n")
+        let rotationAngles = getRotationAngles(from: self.position)
+        print("Roll: \(rotationAngles.roll.radiansToDegrees)°")
+        print("Pitch: \(rotationAngles.pitch.radiansToDegrees)°")
+        print("Yaw: \(rotationAngles.yaw.radiansToDegrees)°")
+        print("\n")
+        print("Matrix (positionOffTracking) n°: \(cont)")
+        printSimdFloat4x4(positionOffTracking)
+        print("\n")
+        let rotationAngles2 = getRotationAngles(from: self.positionOffTracking)
+        print("Roll: \(rotationAngles2.roll.radiansToDegrees)°")
+        print("Pitch: \(rotationAngles2.pitch.radiansToDegrees)°")
+        print("Yaw: \(rotationAngles2.yaw.radiansToDegrees)°")
+        print("\n")
+        
+        cont += 1
+    }
+    
+    public func printMatrix2() {
+        print("_____________________________________\n")
+        print("\nMatrix (offMatrix) n°: \(cont)")
+        printSimdFloat4x4(offMatrix)
+        print("\n")
+        let rotationAngles = getRotationAngles(from: offMatrix)
+        print("Roll: \(rotationAngles.roll.radiansToDegrees)°")
+        print("Pitch: \(rotationAngles.pitch.radiansToDegrees)°")
+        print("Yaw: \(rotationAngles.yaw.radiansToDegrees)°")
+        print("\n")
+        print("Matrix (newPosition) n°: \(cont)")
+        printSimdFloat4x4(self.position)
+        print("\n")
+        let rotationAngles2 = getRotationAngles(from: self.position)
+        print("Roll: \(rotationAngles2.roll.radiansToDegrees)°")
+        print("Pitch: \(rotationAngles2.pitch.radiansToDegrees)°")
+        print("Yaw: \(rotationAngles2.yaw.radiansToDegrees)°")
+        print("\n")
+        
+        cont += 1
+    }
+    
+    // MARK: - Equatable & Hashable
+
     public static func == (lhs: PositionProvider, rhs: PositionProvider) -> Bool {
         return lhs.id == rhs.id
     }
@@ -528,5 +564,4 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
-    
 }

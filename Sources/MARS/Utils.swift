@@ -48,14 +48,9 @@ func generatePositionNode(_ color: UIColor, _ radius: CGFloat) -> SCNNode {
 
 @MainActor
 func applyRotoTraslation(to node: SCNNode, with rotoTraslation: RotoTraslationMatrix) {
+        let combinedMatrix = rotoTraslation.translation * rotoTraslation.r_Y
+        node.simdWorldTransform = combinedMatrix * node.simdWorldTransform
     
-    let combinedMatrix = rotoTraslation.translation * rotoTraslation.r_Y
-    node.simdWorldTransform = combinedMatrix * node.simdWorldTransform
-    
-    print("Floor Position:\n")
-    printSimdFloat4x4(node.simdWorldTransform)
-    print("Moltiplicate for:\n")
-    printSimdFloat4x4(combinedMatrix)
 }
 
 @available(iOS 16.0, *)
@@ -67,7 +62,7 @@ func addLocationNode(scnView: SCNView) {
     }
     
     var userLocation = generatePositionNode(UIColor(red: 0, green: 255, blue: 0, alpha: 1.0), 0.2)
-    userLocation.simdWorldPosition = simd_float3(0.0, 0.0, 0.0)
+    userLocation.simdWorldPosition = simd_float3( 0.0, 0.0, 0.0)
     userLocation.name = "POS_ROOM"
     scnView.scene!.rootNode.addChildNode(userLocation)
 }
@@ -232,14 +227,3 @@ public func trackingStateToString(_ state: ARCamera.TrackingState) -> String {
     }
 }
 
-extension simd_float4x4 {
-    func formattedString() -> String {
-        let rows = [
-            String(format: "[%.2f, %.2f, %.2f, %.2f]", columns.0.x, columns.1.x, columns.2.x, columns.3.x),
-            String(format: "[%.2f, %.2f, %.2f, %.2f]", columns.0.y, columns.1.y, columns.2.y, columns.3.y),
-            String(format: "[%.2f, %.2f, %.2f, %.2f]", columns.0.z, columns.1.z, columns.2.z, columns.3.z),
-            String(format: "[%.2f, %.2f, %.2f, %.2f]", columns.0.w, columns.1.w, columns.2.w, columns.3.w)
-        ]
-        return rows.joined(separator: "\n")
-    }
-}

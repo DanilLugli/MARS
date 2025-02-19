@@ -32,18 +32,23 @@ public struct SCNViewContainer: UIViewRepresentable {
     @State var rotoTraslationActive: Int = 0
     
     init() {}
-        
+    
     @MainActor
     func loadPlanimetry(scene: Any, roomsNode: [String]?, borders: Bool, nameCaller: String) {
-       
+        
         if let roomScene = scene as? Room {
             loadScene(from: roomScene.roomURL, name: roomScene.name, type: "Room")
             addLocationNode(scnView: self.scnView)
             setCamera(scnView: self.scnView, cameraNode: self.cameraNode, massCenter: self.massCenter)
+            
         } else if let floorScene = scene as? Floor {
             loadScene(from: floorScene.floorURL, name: floorScene.name, type: "Floor")
             MARS.addFloorLocationNode(scnView: self.scnView)
-            setCamera(scnView: self.scnView, cameraNode: cameraNode,  massCenter: self.massCenter)
+            setCamera(scnView: self.scnView, cameraNode: self.cameraNode, massCenter: self.massCenter)
+            
+//            setCameraFollowPosition(scnView: self.scnView, cameraNode: cameraNode)
+//            Task { await setCameraFollowPosition(scnView: self.scnView, cameraNode: cameraNode) }
+            
         } else {
             print("The provided scene is neither a Room nor a Floor.")
         }
@@ -58,11 +63,11 @@ public struct SCNViewContainer: UIViewRepresentable {
                 if child.name?.prefix(3) != "POS"{
                     //child.scale = SCNVector3(2.0, 2.0, 2.0)
                 }
-              
+                
             }
         }
         
-       // createAxesNode()
+        // createAxesNode()
     }
     
     func loadScene(from baseURL: URL, name: String, type: String) {
@@ -90,13 +95,13 @@ public struct SCNViewContainer: UIViewRepresentable {
         originNode.geometry?.firstMaterial?.diffuse.contents = UIColor.red
         originNode.position = SCNVector3(0, 0, 0)
         originNode.name = "Originini"
-
+        
         return originNode
     }
-
+    
     func drawSceneObjects(borders: Bool) {
         var drawnNodes = Set<String>()
-
+        
         let nodeMaterials: [String: UIColor] = [
             "Floor0": .green,
             "Floor": .white.withAlphaComponent(0),
@@ -108,17 +113,19 @@ public struct SCNViewContainer: UIViewRepresentable {
             "Stor": .systemGray,
             "Sofa": UIColor(red: 0.0, green: 0.0, blue: 0.5, alpha: 0.6),
             "Tele": .orange
+            //            "Floor_Way": .blue,
+            //            "Floor_Bed Marco": .orange
         ]
-
+        
         scnView.scene?
             .rootNode
             .childNodes(passingTest: { node, _ in
                 guard let nodeName = node.name else { return false }
                 return nodeName != "Room" &&
-                       nodeName != "Floor0" &&
-                       nodeName != "Geom" &&
-                       !nodeName.hasSuffix("_grp") &&
-                       nodeName != "__selected__"
+                nodeName != "Floor0" &&
+                nodeName != "Geom" &&
+                !nodeName.hasSuffix("_grp") &&
+                nodeName != "__selected__"
             })
             .forEach { node in
                 guard let nodeName = node.name else { return }
@@ -126,13 +133,13 @@ public struct SCNViewContainer: UIViewRepresentable {
                 let material = SCNMaterial()
                 material.diffuse.contents = nodeMaterials.first { nodeName.hasPrefix($0.key) }?.value ?? UIColor.black
                 material.lightingModel = .physicallyBased
-
+                
                 if nodeName.hasPrefix("Wall") {
                     node.scale = SCNVector3(node.scale.x,
                                             node.scale.y,
                                             node.scale.z * 0.7)
                 }
-
+                
                 if nodeName.hasPrefix("Door") || nodeName.hasPrefix("Open") {
                     // Rialza di 2 metri
                     node.position.y += 2.0
@@ -147,7 +154,7 @@ public struct SCNViewContainer: UIViewRepresentable {
                 drawnNodes.insert(nodeName)
             }
     }
-
+    
     func setMassCenter() {
         let massCenter = SCNNode()
         massCenter.worldPosition = SCNVector3(0, 0, 0)
@@ -157,12 +164,12 @@ public struct SCNViewContainer: UIViewRepresentable {
         }) {
             let calculatedMassCenter = findMassCenter(nodes)
             massCenter.worldPosition = calculatedMassCenter.worldPosition
-           // drawCross(at: massCenter)
+            // drawCross(at: massCenter)
         }
         
         scnView.scene?.rootNode.addChildNode(massCenter)
     }
-
+    
     func findMassCenter(_ nodes: [SCNNode]) -> SCNNode {
         let massCenter = SCNNode()
         
@@ -195,7 +202,7 @@ public struct SCNViewContainer: UIViewRepresentable {
         massCenter.worldPosition = SCNVector3(averageX, averageY, averageZ)
         return massCenter
     }
-
+    
     private func drawCross(at node: SCNNode) {
         let lineMaterial = SCNMaterial()
         lineMaterial.diffuse.contents = UIColor.green.withAlphaComponent(0.8) // Verde fluorescente
@@ -218,11 +225,18 @@ public struct SCNViewContainer: UIViewRepresentable {
         node.addChildNode(xLineNode)
         node.addChildNode(zLineNode)
     }
-
+    
     ///Manage Camera Node
     func setCamera(scnView: SCNView, cameraNode: SCNNode, massCenter: SCNNode) {
         
         cameraNode.camera = SCNCamera()
+        
+        //        guard let floorNode = scnView.scene?.rootNode.childNode(withName: "POS_FLOOR", recursively: true) else {
+        //
+        //            print("Error")
+        //            return
+        //        }
+        
         cameraNode.worldPosition = SCNVector3(
             massCenter.worldPosition.x,
             massCenter.worldPosition.y + 10,
@@ -232,18 +246,18 @@ public struct SCNViewContainer: UIViewRepresentable {
         cameraNode.camera?.usesOrthographicProjection = true
         cameraNode.camera?.orthographicScale = 5
         cameraNode.eulerAngles = SCNVector3(-Double.pi / 2, 0, 0)
-
+        
         scnView.scene?.rootNode.childNodes
             .filter { $0.light?.type == .ambient }
             .forEach { $0.removeFromParentNode() }
-
+        
         let ambientLight = SCNNode()
         ambientLight.light = SCNLight()
         ambientLight.light!.type = .ambient
         ambientLight.light!.color = UIColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1.0)
         ambientLight.light!.intensity = 1200
         scnView.scene?.rootNode.addChildNode(ambientLight)
-            
+        
         scnView.pointOfView = cameraNode
         scnView.scene?.rootNode.addChildNode(cameraNode)
         cameraNode.constraints = []
@@ -251,55 +265,57 @@ public struct SCNViewContainer: UIViewRepresentable {
     
     @MainActor
     func setCameraFollowPosition(scnView: SCNView, cameraNode: SCNNode) {
-        // 1) Crea la camera
-        cameraNode.camera = SCNCamera()
-        cameraNode.camera?.usesOrthographicProjection = true
-        cameraNode.camera?.orthographicScale = 5
         
-        // Rimuovi eventuali luci ambient già presenti
-        scnView.scene?.rootNode.childNodes
-            .filter { $0.light?.type == .ambient }
-            .forEach { $0.removeFromParentNode() }
+        print("Called from: \(Thread.isMainThread ? "Main Thread" : "Background Thread")")
+        assert(Thread.isMainThread, "❌ Errore: setCameraFollowPosition chiamata da un thread in background!")
+        
 
-        // Aggiungi una luce ambient
+            // 1) Crea la camera
+            cameraNode.camera = SCNCamera()
+            cameraNode.camera?.usesOrthographicProjection = true
+            cameraNode.camera?.orthographicScale = 5
+            
+            // Rimuovi eventuali luci ambient già presenti
+            scnView.scene?.rootNode.childNodes
+                .filter { $0.light?.type == .ambient }
+                .forEach { $0.removeFromParentNode() }
+            
+            // Aggiungi una luce ambient
         let ambientLight = SCNNode()
         ambientLight.light = SCNLight()
         ambientLight.light?.type = .ambient
         ambientLight.light?.color = UIColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1.0)
         ambientLight.light?.intensity = 1200
         scnView.scene?.rootNode.addChildNode(ambientLight)
-
+        
         // 2) Aggiungi il cameraNode alla scena e impostalo come pointOfView
         scnView.scene?.rootNode.addChildNode(cameraNode)
         scnView.pointOfView = cameraNode
         
-        // 3) Crea un constraint per seguire il nodo "POS_FLOOR"
         let followFloorConstraint = SCNTransformConstraint(inWorldSpace: true) { cameraNode, _ in
-            // Trova il nodo con name == "POS_FLOOR"
-            guard let floorNode = scnView.scene?.rootNode.childNode(withName: "POS_FLOOR", recursively: true) else {
-                // Se non esiste, nessun aggiornamento. Ritorno la transform attuale.
-                return cameraNode.transform
+            var position = SCNVector3Zero
+            
+            DispatchQueue.main.sync {
+                if let floorNode = scnView.scene?.rootNode.childNode(withName: "POS_FLOOR", recursively: true) {
+                    position = SCNVector3(
+                        floorNode.worldPosition.x,
+                        floorNode.worldPosition.y + 10,
+                        floorNode.worldPosition.z
+                    )
+                }
             }
-
-            // Imposta la camera 10 metri sopra al floorNode
-            cameraNode.worldPosition = SCNVector3(
-                floorNode.worldPosition.x,
-                floorNode.worldPosition.y + 10,  // Regola "altezza" a piacere
-                floorNode.worldPosition.z
-            )
-
-            // Orienta la camera guardando in basso (asse -y)
-            // In questo esempio ruotiamo di -90° intorno all'asse X
+            
+            cameraNode.worldPosition = position
             cameraNode.eulerAngles = SCNVector3(-Float.pi / 2, 0, 0)
-
+            
             return cameraNode.transform
         }
         
         // 4) Assegna il constraint al cameraNode
         cameraNode.constraints = [followFloorConstraint]
+        
     }
-
-
+    
     func setCameraUp(scnView: SCNView, cameraNode: SCNNode, massCenter: SCNNode) {
         cameraNode.camera = SCNCamera()
         
@@ -319,9 +335,9 @@ public struct SCNViewContainer: UIViewRepresentable {
         cameraNode.camera?.fieldOfView = 60.0 // Adjust as needed
         
         // Make the camera look at the mass center
-    //        let lookAtConstraint = SCNLookAtConstraint(target: massCenter)
-    //        lookAtConstraint.isGimbalLockEnabled = true
-    //        cameraNode.constraints = [lookAtConstraint]
+        //        let lookAtConstraint = SCNLookAtConstraint(target: massCenter)
+        //        lookAtConstraint.isGimbalLockEnabled = true
+        //        cameraNode.constraints = [lookAtConstraint]
         
         // Add ambient light to the scene
         let ambientLight = SCNNode()
@@ -341,7 +357,7 @@ public struct SCNViewContainer: UIViewRepresentable {
         // Set the point of view of the scene to the camera node
         scnView.pointOfView = cameraNode
     }
-
+    
     func generatePositionNode(_ color: UIColor, _ radius: CGFloat) -> SCNNode {
         
         let houseNode = SCNNode() //3 Sphere
@@ -375,7 +391,7 @@ public struct SCNViewContainer: UIViewRepresentable {
         //houseNode.worldPosition = SCNVector3(0.0, 3.0, 0.0)
         return houseNode
     }
-
+    
     func createAxesNode(length: CGFloat = 1.0, radius: CGFloat = 0.02) {
         let axisNode = SCNNode()
         
@@ -426,6 +442,9 @@ public struct SCNViewContainer: UIViewRepresentable {
         
         var userLocation = generatePositionNode(UIColor(red: 255, green: 0, blue: 0, alpha: 1.0), 0.2)
         userLocation.simdWorldTransform = simd_float4x4(0)
+        //        userLocation.simdWorldTransform.columns.3.y = 3
+        userLocation.renderingOrder = 10
+        userLocation.geometry?.firstMaterial?.readsFromDepthBuffer = false
         userLocation.name = "POS_FLOOR"
         scnView.scene?.rootNode.addChildNode(userLocation)
     }
@@ -433,22 +452,22 @@ public struct SCNViewContainer: UIViewRepresentable {
     func drawContent(roomsNode: [String]?, borders: Bool) {
         let excludedNames = ["Room", "Floor0", "Geom", "__selected__"]
         var drawnNodes = Set<String>()
-
+        
         scnView.scene?.rootNode.childNodes(passingTest: { node, _ in
             guard let name = node.name else { return false }
             return !excludedNames.contains(name) && !name.hasSuffix("_grp")
         })
         .forEach { node in
             guard let nodeName = node.name else { return }
-
-//            resetNodeMaterial(node)
-
+            
+            //            resetNodeMaterial(node)
+            
             node.geometry?.materials = [materialForNode(named: nodeName, roomsNode: roomsNode)]
-
+            
             drawnNodes.insert(nodeName)
         }
     }
-
+    
     private func materialForNode(named name: String, roomsNode: [String]?) -> SCNMaterial {
         let material = SCNMaterial()
         switch name {
@@ -480,42 +499,24 @@ public struct SCNViewContainer: UIViewRepresentable {
         material.lightingModel = .physicallyBased
         return material
     }
-
+    
     private func resetNodeMaterial(_ node: SCNNode) {
         // Reimposta il materiale del nodo eliminando eventuali trasparenze o modifiche precedenti
         node.geometry?.materials = [SCNMaterial()] // Crea un materiale vuoto come reset
     }
     
-//    @MainActor func updateInversePosition(_ newPosition: simd_float4x4, _ rotoTraslation: RotoTraslationMatrix?) {
-//        var floorPositionNode = addLastPositionMarker()
-//        
-//        if let r = rotoTraslation {
-//            if let floorNodes = scnView.scene?.rootNode.childNodes.filter({ $0.name == "POS_ROOM" }), !floorNodes.isEmpty {
-//                floorNodes.forEach { $0.removeFromParentNode() }
-//            } else {
-//                print("Nessun nodo trovato con nome 'POS_FLOOR' per la rimozione.")
-//            }
-//            
-//            floorPositionNode.simdWorldTransform = newPosition
-//            applyInverseRotoTraslation(to: floorPositionNode, with: r)
-//        }
-//            scnView.scene?.rootNode.addChildNode(floorPositionNode)
-//    }
-    
     @MainActor
     func updatePosition(_ newPosition: simd_float4x4, _ matrix: RotoTraslationMatrix?, floor: Floor) {
         
         if matrix == nil {
-            print("Room Position:\n")
-            printSimdFloat4x4(newPosition)
             self.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_ROOM" })?.simdWorldTransform = newPosition
-            self.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_FLOOR" })?.simdWorldTransform = newPosition
+            
+                self.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_FLOOR" })?.simdWorldTransform = newPosition
             
         }
         
         if let r = matrix {
-            
-            updateFloorPositionNode(in: self.scnView, newPosition: newPosition, rotoTranslationMatrix: matrix!, floor: floor)
+                updateFloorPositionNode(in: self.scnView, newPosition: newPosition, rotoTranslationMatrix: matrix!, floor: floor)
             
         }
     }
@@ -563,7 +564,7 @@ public struct SCNViewContainer: UIViewRepresentable {
             
             if gesture.state == .changed {
                 let newScale = camera.orthographicScale / Double(gesture.scale)
-                camera.orthographicScale = max(1.0, min(newScale, 200.0)) 
+                camera.orthographicScale = max(1.0, min(newScale, 200.0))
                 gesture.scale = 1
             }
         }
@@ -572,8 +573,8 @@ public struct SCNViewContainer: UIViewRepresentable {
             
             let translation = gesture.translation(in: parent.scnView)
             
-            parent.cameraNode.position.x -= Float(translation.x) * 0.01
-            parent.cameraNode.position.z -= Float(translation.y) * 0.01
+            parent.cameraNode.position.x -= Float(translation.x) * 0.04
+            parent.cameraNode.position.z -= Float(translation.y) * 0.04
             
             gesture.setTranslation(.zero, in: parent.scnView)
             
@@ -586,70 +587,6 @@ public struct SCNViewContainer_Previews: PreviewProvider {
     public static var previews: some View {
         SCNViewContainer()
     }
-}
-
-extension SCNQuaternion {
-    func difference(_ other: SCNQuaternion) -> SCNQuaternion{
-        return SCNQuaternion(
-            self.x - other.x,
-            self.y - other.y,
-            self.z - other.z,
-            self.w - other.w
-        )
-    }
-    
-    func sum(_ other: SCNQuaternion) -> SCNQuaternion{
-        return SCNQuaternion(
-            self.x + other.x,
-            self.y + other.y,
-            self.z + other.z,
-            self.w + other.w
-        )
-    }
-}
-
-extension SCNVector3 {
-    func difference(_ other: SCNVector3) -> SCNVector3 {
-        return SCNVector3(
-            self.x - other.x,
-            self.y - other.y,
-            self.z - other.z
-        )
-    }
-    
-    func sum(_ other: SCNVector3) -> SCNVector3 {
-        return SCNVector3(
-            self.x + other.x,
-            self.y + other.y,
-            self.z + other.z
-        )
-    }
-    
-    func rotateAroundOrigin(_ angle: Float) -> SCNVector3 {
-        var a = Complex<Float>.i
-        a.real = cos(angle)
-        a.imaginary = sin(angle)
-        var b = Complex<Float>.i
-        b.real = self.x
-        b.imaginary = self.z
-        let position = a*b
-        return SCNVector3(
-            position.real,
-            self.y,
-            position.imaginary
-        )
-    }
-}
-
-extension SCNNode {
-    
-    var height: CGFloat { CGFloat(self.boundingBox.max.y - self.boundingBox.min.y) }
-    var width: CGFloat { CGFloat(self.boundingBox.max.x - self.boundingBox.min.x) }
-    var length: CGFloat { CGFloat(self.boundingBox.max.z - self.boundingBox.min.z) }
-    
-    var halfCGHeight: CGFloat { height / 2.0 }
-    var halfHeight: Float { Float(height / 2.0) }
-    var halfScaledHeight: Float { halfHeight * self.scale.y  }
 }
 
 @MainActor

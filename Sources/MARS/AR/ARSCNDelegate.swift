@@ -31,23 +31,26 @@ class ARSCNDelegate: NSObject, LocationSubject, ARSCNViewDelegate {
         if let imageAnchor = anchor as? ARImageAnchor {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
+
                 positionProvider?.findRoomFromMarker(markerName: imageAnchor.referenceImage.name ?? "Error")
+                //ARSessionManager.shared.coachingOverlay.setActive(false, animated: true)
             }
         }
     }
     
-    nonisolated func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
     
+    nonisolated func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
         DispatchQueue.main.async {
             guard let currentFrame = self.sceneView?.session.currentFrame else {
                 print("Frame non disponibile")
                 return
             }
-            
+
             let camera = currentFrame.camera
-            
             let trackingState = camera.trackingState
             let newPosition = currentFrame.camera.transform
+
+            // Assicurati che gli aggiornamenti di posizione avvengano sul main thread
             self.notifyLocationUpdate(newLocation: newPosition, newTrackingState: trackingStateToString(trackingState))
         }
     }
