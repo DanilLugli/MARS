@@ -131,7 +131,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             readyToChange = false
             countNormalCheckRoomFloor += 1
             
-            if countNormalCheckRoomFloor >= 40 {
+            if countNormalCheckRoomFloor >= 20 {
                 checkSwitchRoom(state: true)
                 checkSwitchFloor()
                 countNormalCheckRoomFloor = 0
@@ -195,7 +195,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             self.prevRoom = room
 
             let roomNodes = self.activeFloor.rooms.map { $0.name }
-            
+                        
             self.scnFloorView.loadPlanimetry(scene: self.activeFloor, roomsNode: roomNodes, borders: true, nameCaller: self.activeFloor.name)
             self.scnRoomView.loadPlanimetry(scene: self.activeRoom, roomsNode: nil, borders: true, nameCaller: self.activeRoom.name)
             
@@ -250,20 +250,22 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     
     /// Verifica se bisogna passare ad un nuovo floor, in base all'altezza del nodo POS_ROOM
     func checkSwitchFloor() {
-        guard let posFloorNode = scnFloorView.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_FLOOR" }) else {
+        guard let posRoomNode = scnRoomView.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_ROOM" }) else {
             return
         }
-        
+        print("CHECK SWITCH FLOOR")
         for connection in self.activeRoom.connections {
-            if posFloorNode.simdWorldTransform.columns.3.y >= connection.altitude - 0.5 &&
-                posFloorNode.simdWorldTransform.columns.3.y <= connection.altitude + 0.5 {
-                
+            print("Y ROOM: \(posRoomNode.simdWorldTransform.columns.3.y)\n")
+            print("Altitude connection: \(connection.altitude)\n")
+            
+            if posRoomNode.simdWorldTransform.columns.3.y >= connection.altitude - 0.5 &&
+                posRoomNode.simdWorldTransform.columns.3.y <= connection.altitude + 0.5 {
                 let nextFloorName = connection.targetFloor
                 print("Next Floor Name: \(nextFloorName)")
                 let nextRoomName = connection.targetRoom
                 print("Next Room Name: \(nextRoomName)")
                 
-                if nextRoomName != activeRoom.name, nextFloorName != activeFloor.name,
+                if nextFloorName != activeFloor.name,
                    let nextFloor = Floor.getFloorByName(from: building.floors, name: nextFloorName),
                    let nextRoom = nextFloor.getRoom(byName: nextRoomName) {
                     
@@ -277,7 +279,8 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
                     
                     scnRoomView.loadPlanimetry(scene: activeRoom, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
                     scnFloorView.loadPlanimetry(scene: activeFloor, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
-                    
+                    addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
+
                     ARSessionManager.shared.configureForWorldMap(with: activeRoom)
                     showChangeFloorToast = true
                     

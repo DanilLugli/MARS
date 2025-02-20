@@ -52,7 +52,6 @@ public struct SCNViewContainer: UIViewRepresentable {
         } else {
             print("The provided scene is neither a Room nor a Floor.")
         }
-        //addOriginMarker(to: self.scnView.scene!)
         
         drawSceneObjects(borders: true)
         

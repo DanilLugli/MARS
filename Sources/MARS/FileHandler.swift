@@ -209,11 +209,15 @@ class FileHandler: ObservableObject {
                         
                         let jsonData = try Data(contentsOf: connectionFileURL)
                         if let jsonString = String(data: jsonData, encoding: .utf8) {
-                            print("📂 JSON ricevuto: \(jsonString)")  // ✅ Stampa il JSON per il debug
+                            print("📂 JSON ricevuto: \(jsonString)")
                         }
                         let connections = try JSONDecoder().decode([AdjacentFloorsConnection].self, from: jsonData)
                         
                         room.connections.append(contentsOf: connections)
+                        for connection in room.connections {
+                            print("DEBUG altitude from room \(room.name): \(connections[0].altitude)")
+                        }
+                        
                         if room.connections.isEmpty {
                             print("\(room.name) has connections empty")
                         }
