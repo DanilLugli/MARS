@@ -4,11 +4,7 @@
 //
 //  Created by Danil Lugli on 15/10/24.
 //
-//  Questo file contiene la classe PositionProvider,
-//  che gestisce il tracciamento della posizione e il cambio di room/floor,
-//  suddividendo le funzionalità in sezioni logiche tramite MARK.
-//  (Puoi spostare le varie sezioni in file separati se lo ritieni opportuno)
-//
+
 
 import SwiftUI
 import ARKit
@@ -59,6 +55,8 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     @Published var markerFounded: Bool = false
     @Published var showMarkerFoundedToast: Bool = false
     @Published var showChangeFloorToast: Bool = false
+    var showManagerCamera: Bool = false
+    
 
     var currentMatrix: simd_float4x4 = simd_float4x4(1.0)
     var offMatrix: simd_float4x4 = simd_float4x4(1.0)
@@ -101,18 +99,32 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     public func onLocationUpdate(_ newPosition: simd_float4x4, _ newTrackingState: String) {
         switch switchingRoom {
         case false:
+            
+            if showManagerCamera{
+                ARSessionManager.shared.coachingOverlay.setActive(false, animated: true)
+                showManagerCamera = false
+
+            }
+            
             self.position = newPosition
             self.trackingState = newTrackingState
             self.roomMatrixActive = self.activeRoom.name
             
-            ARSessionManager.shared.coachingOverlay.setActive(false, animated: true)
+            
             reLocalizingFrameCount = 0
             
             updateTrackingState(newState: newTrackingState)
             
             scnRoomView.updatePosition(self.position, nil, floor: self.activeFloor)
+            
             if !changeStateBool {
-            scnFloorView.updatePosition(self.position, self.activeFloor.associationMatrix[self.activeRoom.name], floor: self.activeFloor)
+                
+                self.updateCameraPosition(self.scnFloorView.updatePosition(
+                    self.position,
+                    self.activeFloor.associationMatrix[self.activeRoom.name],
+                    floor: self.activeFloor)
+                )
+                
             }
             
             countNormal += 1
@@ -138,6 +150,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             }
             
         case true:
+
             countNormal = 0
             lastKnownPosition = position
             position = newPosition
@@ -147,16 +160,21 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             scnRoomView.updatePosition(newPosition, nil, floor: activeFloor)
 
             if trackingState == "Re-Localizing..." {
-                reLocalizingFrameCount += 1 // Incrementa il contatore dei frame in cui è in "Re-Localizing..."
+                reLocalizingFrameCount += 1
                 
-                if reLocalizingFrameCount >= 120 {
+                if reLocalizingFrameCount >= 140 {
+                    showManagerCamera = true
                     ARSessionManager.shared.coachingOverlay.setActive(true, animated: true)
                 }
-
-                scnFloorView.updatePosition(positionOffTracking, nil, floor: activeFloor)
+                
+                self.scnFloorView.updatePosition(self.positionOffTracking, nil, floor: self.activeFloor)
+                
+                self.updateCameraPosition(self.positionOffTracking)
+                
                 readyToChange = true
+                
             } else {
-                reLocalizingFrameCount = 0 
+                reLocalizingFrameCount = 0
             }
 
             if readyToChange {
@@ -214,7 +232,6 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             return
         }
         
-        // Recupera tutti i nodi che corrispondono ai nomi delle room del floor attivo
         let roomsNode = getNodesMatchingRoomNames(from: activeFloor, in: scnFloorView.scnView)
         for room in roomsNode {
             print(room.name)
@@ -238,11 +255,11 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
                 self.activeRoom = prevRoom
             }
             
-            print("CHANGE ROOM: From \(prevRoom.name) to \(self.activeRoom.name)")
             ARSessionManager.shared.configureForWorldMap(with: activeRoom)
             
             let roomNames = activeFloor.rooms.map { $0.name }
             scnRoomView.loadPlanimetry(scene: activeRoom, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
+            
         } else {
             print("No change Room: \(self.nodeContainedIn)")
         }
@@ -483,12 +500,27 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         }
     }
     
+
     func notifyLocationUpdate(newLocation: simd_float4x4, newTrackingState: String) {
-        DispatchQueue.main.async {
-            for positionObserver in self.positionObservers {
-                positionObserver.onLocationUpdate(newLocation, newTrackingState)
-            }
+        for positionObserver in self.positionObservers {
+            positionObserver.onLocationUpdate(newLocation, newTrackingState)
         }
+    }
+    
+    @MainActor
+    func updateCameraPosition(_ newPosition: simd_float4x4) {
+        let cameraNode = self.scnFloorView.cameraNode
+
+        cameraNode.position = SCNVector3(
+            newPosition.columns.3.x,
+            newPosition.columns.3.y + 10,
+            newPosition.columns.3.z
+        )
+        
+        cameraNode.eulerAngles = SCNVector3(-Float.pi / 2, 0, 0)
+
+        self.scnFloorView.scnView.pointOfView?.position = SCNVector3(newPosition.columns.3.x, 15.0 + newPosition.columns.3.y, newPosition.columns.3.z)
+        
     }
     
     // MARK: - Metodi di Debug

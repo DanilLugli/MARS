@@ -38,8 +38,8 @@ class ARSCNDelegate: NSObject, LocationSubject, ARSCNViewDelegate {
         }
     }
     
-    
     nonisolated func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
+
         DispatchQueue.main.async {
             guard let currentFrame = self.sceneView?.session.currentFrame else {
                 print("Frame non disponibile")
@@ -50,13 +50,12 @@ class ARSCNDelegate: NSObject, LocationSubject, ARSCNViewDelegate {
             let trackingState = camera.trackingState
             let newPosition = currentFrame.camera.transform
 
-            // Assicurati che gli aggiornamenti di posizione avvengano sul main thread
             self.notifyLocationUpdate(newLocation: newPosition, newTrackingState: trackingStateToString(trackingState))
         }
     }
     
     nonisolated func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
-        print("🔄 Stato Tracking: \(camera.trackingState)")
+        print("Change Tracking: \(camera.trackingState)")
     }
     
     func addLocationObserver(positionObserver: PositionObserver) {
@@ -70,10 +69,11 @@ class ARSCNDelegate: NSObject, LocationSubject, ARSCNViewDelegate {
         self.positionObservers = self.positionObservers.filter { $0.id != positionObserver.id }
     }
     
+    @MainActor
     func notifyLocationUpdate(newLocation: simd_float4x4, newTrackingState: String) {
-        
         for positionObserver in self.positionObservers {
             positionObserver.onLocationUpdate(newLocation, newTrackingState)
         }
+       
     }
 }

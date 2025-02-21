@@ -34,7 +34,7 @@ public struct SCNViewContainer: UIViewRepresentable {
     init() {}
     
     @MainActor
-    func loadPlanimetry(scene: Any, roomsNode: [String]?, borders: Bool, nameCaller: String) {
+    mutating func loadPlanimetry(scene: Any, roomsNode: [String]?, borders: Bool, nameCaller: String) {
         
         if let roomScene = scene as? Room {
             loadScene(from: roomScene.roomURL, name: roomScene.name, type: "Room")
@@ -263,57 +263,39 @@ public struct SCNViewContainer: UIViewRepresentable {
     }
     
     @MainActor
-    func setCameraFollowPosition(scnView: SCNView, cameraNode: SCNNode) {
-        
-        print("Called from: \(Thread.isMainThread ? "Main Thread" : "Background Thread")")
-        assert(Thread.isMainThread, "❌ Errore: setCameraFollowPosition chiamata da un thread in background!")
-        
+    mutating func setCameraFollowPosition(scnView: SCNView, cameraNode: SCNNode) {
+        // 1) Configura la camera per una vista ortografica dall'alto
+        cameraNode.camera = SCNCamera()
+        cameraNode.camera?.usesOrthographicProjection = true
+        cameraNode.camera?.orthographicScale = 5  // Regola lo zoom della vista
+        cameraNode.camera?.zNear = 1
+        cameraNode.camera?.zFar = 1000
 
-            // 1) Crea la camera
-            cameraNode.camera = SCNCamera()
-            cameraNode.camera?.usesOrthographicProjection = true
-            cameraNode.camera?.orthographicScale = 5
-            
-            // Rimuovi eventuali luci ambient già presenti
-            scnView.scene?.rootNode.childNodes
-                .filter { $0.light?.type == .ambient }
-                .forEach { $0.removeFromParentNode() }
-            
-            // Aggiungi una luce ambient
+        // 2) Rimuovi eventuali luci esistenti
+        scnView.scene?.rootNode.childNodes
+            .filter { $0.light?.type == .ambient }
+            .forEach { $0.removeFromParentNode() }
+
+        // 3) Aggiungi una luce ambientale
         let ambientLight = SCNNode()
         ambientLight.light = SCNLight()
         ambientLight.light?.type = .ambient
         ambientLight.light?.color = UIColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1.0)
         ambientLight.light?.intensity = 1200
         scnView.scene?.rootNode.addChildNode(ambientLight)
-        
-        // 2) Aggiungi il cameraNode alla scena e impostalo come pointOfView
+
+        // 4) Aggiungi la camera alla scena
         scnView.scene?.rootNode.addChildNode(cameraNode)
         scnView.pointOfView = cameraNode
-        
-        let followFloorConstraint = SCNTransformConstraint(inWorldSpace: true) { cameraNode, _ in
-            var position = SCNVector3Zero
-            
-            DispatchQueue.main.sync {
-                if let floorNode = scnView.scene?.rootNode.childNode(withName: "POS_FLOOR", recursively: true) {
-                    position = SCNVector3(
-                        floorNode.worldPosition.x,
-                        floorNode.worldPosition.y + 10,
-                        floorNode.worldPosition.z
-                    )
-                }
-            }
-            
-            cameraNode.worldPosition = position
-            cameraNode.eulerAngles = SCNVector3(-Float.pi / 2, 0, 0)
-            
-            return cameraNode.transform
-        }
-        
-        // 4) Assegna il constraint al cameraNode
-        cameraNode.constraints = [followFloorConstraint]
-        
+
+        // 5) Imposta una posizione iniziale indipendente dalla POS_FLOOR
+        cameraNode.position = SCNVector3(0, 50, 0)  // Altezza fissa
+        cameraNode.eulerAngles = SCNVector3(-Float.pi / 2, 0, 0) // Vista dall'alto
+
+        // 6) Salva il riferimento alla camera
+        self.cameraNode = cameraNode
     }
+    
     
     func setCameraUp(scnView: SCNView, cameraNode: SCNNode, massCenter: SCNNode) {
         cameraNode.camera = SCNCamera()
@@ -505,29 +487,29 @@ public struct SCNViewContainer: UIViewRepresentable {
     }
     
     @MainActor
-    func updatePosition(_ newPosition: simd_float4x4, _ matrix: RotoTraslationMatrix?, floor: Floor) {
+    func updatePosition(_ newPosition: simd_float4x4, _ matrix: RotoTraslationMatrix?, floor: Floor) -> simd_float4x4 {
         
         if matrix == nil {
             self.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_ROOM" })?.simdWorldTransform = newPosition
-            
-                self.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_FLOOR" })?.simdWorldTransform = newPosition
-            
+            self.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_FLOOR" })?.simdWorldTransform = newPosition
         }
         
         if let r = matrix {
-                updateFloorPositionNode(in: self.scnView, newPosition: newPosition, rotoTranslationMatrix: matrix!, floor: floor)
-            
+                return updateFloorPositionNode(in: self.scnView, newPosition: newPosition, rotoTranslationMatrix: matrix!, floor: floor)
         }
+        
+        return simd_float4x4(0)
     }
     
     @available(iOS 16.0, *)
     @MainActor
-    func updateFloorPositionNode(in scnView: SCNView, newPosition: simd_float4x4, rotoTranslationMatrix r: RotoTraslationMatrix, floor: Floor) {
+    func updateFloorPositionNode(in scnView: SCNView, newPosition: simd_float4x4, rotoTranslationMatrix r: RotoTraslationMatrix, floor: Floor) -> simd_float4x4{
         
         var nodePosition = scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_FLOOR" })
         nodePosition?.simdWorldTransform = newPosition
         applyRotoTraslation(to: nodePosition!, with: r)
         
+        return nodePosition?.simdWorldTransform ?? simd_float4x4(0)
     }
     
     public func makeUIView(context: Context) -> SCNView {
@@ -612,7 +594,5 @@ class RenderDelegate: NSObject, @preconcurrency SCNSceneRendererDelegate {
         lastRenderer = renderer
     }
 }
-
-
 
 

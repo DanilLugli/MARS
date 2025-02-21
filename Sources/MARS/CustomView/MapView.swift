@@ -164,6 +164,7 @@ public struct MapView: View {
                             VStack {
                                 HStack {
                                     if !locationProvider.firstLocalization{
+                                        
                                         locationProvider.scnFloorView
                                             .frame(width: 380, height: 200)
                                             .cornerRadius(20)

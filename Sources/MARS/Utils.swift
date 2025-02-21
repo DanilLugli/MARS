@@ -47,11 +47,50 @@ func generatePositionNode(_ color: UIColor, _ radius: CGFloat) -> SCNNode {
 }
 
 @MainActor
-func applyRotoTraslation(to node: SCNNode, with rotoTraslation: RotoTraslationMatrix) {
+func applyRotoTraslation(to node: SCNNode, with rotoTraslation: RotoTraslationMatrix) -> simd_float4x4 {
         let combinedMatrix = rotoTraslation.translation * rotoTraslation.r_Y
         node.simdWorldTransform = combinedMatrix * node.simdWorldTransform
-    
+        return node.simdWorldTransform
 }
+
+
+//@MainActor
+//func applyRotoTraslation(to node: SCNNode, with rotoTraslation: RotoTraslationMatrix) -> simd_float4x4 {
+//    var currentTransform = node.simdWorldTransform
+//
+//    // Estrarre la rotazione attuale del nodo
+//    let currentRotationMatrix = simd_float3x3(
+//        simd_make_float3(currentTransform.columns.0),
+//        simd_make_float3(currentTransform.columns.1),
+//        simd_make_float3(currentTransform.columns.2)
+//    )
+//
+//    // Estrarre solo la componente di rotazione attorno all'asse Y dalla nuova matrice
+//    let newYRotationMatrix = simd_float3x3(
+//        SIMD3<Float>(rotoTraslation.r_Y.columns.0.x, 0, rotoTraslation.r_Y.columns.0.z),
+//        SIMD3<Float>(0, 1, 0),
+//        SIMD3<Float>(rotoTraslation.r_Y.columns.2.x, 0, rotoTraslation.r_Y.columns.2.z)
+//    )
+//
+//    // Combinare la nuova rotazione Y con la rotazione originale su X e Z
+//    let updatedRotationMatrix = newYRotationMatrix * currentRotationMatrix
+//
+//    // Ottenere la nuova traslazione combinata
+//    let newTranslation = currentTransform.columns.3 + rotoTraslation.translation.columns.3
+//
+//    // Creare la nuova matrice di trasformazione
+//    let updatedTransform = simd_float4x4(
+//        SIMD4<Float>(updatedRotationMatrix.columns.0, 0),
+//        SIMD4<Float>(updatedRotationMatrix.columns.1, 0),
+//        SIMD4<Float>(updatedRotationMatrix.columns.2, 0),
+//        newTranslation // Nuova traslazione combinata
+//    )
+//
+//    node.simdWorldTransform = updatedTransform
+//
+//    return node.simdWorldTransform
+//}
+
 
 @available(iOS 16.0, *)
 @MainActor
