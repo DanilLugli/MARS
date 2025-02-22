@@ -33,7 +33,7 @@ class ARSCNDelegate: NSObject, LocationSubject, ARSCNViewDelegate {
                 guard let self = self else { return }
 
                 positionProvider?.findRoomFromMarker(markerName: imageAnchor.referenceImage.name ?? "Error")
-                //ARSessionManager.shared.coachingOverlay.setActive(false, animated: true)
+               
             }
         }
     }

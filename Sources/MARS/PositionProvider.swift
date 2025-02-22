@@ -33,9 +33,10 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     var countNormalCheckRoomFloor: Int = 0
     var readyToChange: Bool = false
     var lastKnownPosition: simd_float4x4 = simd_float4x4(1)
+    var currentFloorPosition: simd_float4x4 = simd_float4x4(1)
     var firstLocalization: Bool = false
     var reLocalizingFrameCount = 0
-
+    
     @Published var position: simd_float4x4 = simd_float4x4(0)
     @Published var trackingState: String = ""
     @Published var nodeContainedIn: String = ""
@@ -57,7 +58,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     @Published var showChangeFloorToast: Bool = false
     var showManagerCamera: Bool = false
     
-
+    @Published var showOverlay: Bool = false
     var currentMatrix: simd_float4x4 = simd_float4x4(1.0)
     var offMatrix: simd_float4x4 = simd_float4x4(1.0)
     var cont: Int = 0
@@ -102,6 +103,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             
             if showManagerCamera{
                 ARSessionManager.shared.coachingOverlay.setActive(false, animated: true)
+                self.showOverlay = true
                 showManagerCamera = false
 
             }
@@ -118,17 +120,17 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             scnRoomView.updatePosition(self.position, nil, floor: self.activeFloor)
             
             if !changeStateBool {
-                
-                self.updateCameraPosition(self.scnFloorView.updatePosition(
+                self.currentFloorPosition = self.scnFloorView.updatePosition(
                     self.position,
                     self.activeFloor.associationMatrix[self.activeRoom.name],
                     floor: self.activeFloor)
-                )
+                
+                self.updateCameraPosition(currentFloorPosition)
                 
             }
             
             countNormal += 1
-            if countNormal == 10 {
+            if countNormal == 5 {
                 changeStateBool = false
             }
             
@@ -162,14 +164,16 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             if trackingState == "Re-Localizing..." {
                 reLocalizingFrameCount += 1
                 
-                if reLocalizingFrameCount >= 140 {
+                if reLocalizingFrameCount >= 120 {
                     showManagerCamera = true
                     ARSessionManager.shared.coachingOverlay.setActive(true, animated: true)
+                    self.showOverlay = true
                 }
                 
                 self.scnFloorView.updatePosition(self.positionOffTracking, nil, floor: self.activeFloor)
                 
                 self.updateCameraPosition(self.positionOffTracking)
+                self.currentFloorPosition = self.positionOffTracking
                 
                 readyToChange = true
                 
@@ -300,6 +304,9 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
 
                     ARSessionManager.shared.configureForWorldMap(with: activeRoom)
                     showChangeFloorToast = true
+                    ARSessionManager.shared.coachingOverlay.setActive(true, animated: true)
+                    self.showOverlay = true
+                    
                     
                 }
             }
@@ -312,6 +319,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         if previousTrackingState == "Re-Localizing..." && newState == "Normal" {
             firstLocalization = false
             ARSessionManager.shared.coachingOverlay.setActive(false, animated: true)
+            self.showOverlay = false
         }
         
         // Aggiorna lo stato precedente per il prossimo confronto

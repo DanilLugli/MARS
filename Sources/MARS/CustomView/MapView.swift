@@ -44,10 +44,8 @@ public struct MapView: View {
                         .background(Color.white)
                         .cornerRadius(20)
                         .shadow(radius: 5)
-                        .padding(.top, 80)
+                        .padding(.top, 110)
                         .frame(maxWidth: .infinity)
-
-
                     }
                     if locationProvider.firstLocalization{
                         HStack {
@@ -64,7 +62,7 @@ public struct MapView: View {
                         .background(Color.white)
                         .cornerRadius(20)
                         .shadow(radius: 5)
-                        .padding(.top, 80)
+                        .padding(.top, 110)
                         .frame(maxWidth: .infinity)
                         
                         }
@@ -79,10 +77,10 @@ public struct MapView: View {
                         CardView(
                             buildingMap: locationProvider.building.name,
                             floorMap: locationProvider.activeFloor.name,
-                            
+                    
                             roomMap: locationProvider.activeRoom.name,
                             matrixMap: locationProvider.roomMatrixActive,
-                            actualPosition: locationProvider.position,
+                            actualPosition: locationProvider.currentFloorPosition,
                             trackingState: locationProvider.trackingState,
                             nodeContainedIn: locationProvider.nodeContainedIn,
                             switchingRoom: locationProvider.switchingRoom
@@ -168,7 +166,7 @@ public struct MapView: View {
                                         locationProvider.scnFloorView
                                             .frame(width: 380, height: 200)
                                             .cornerRadius(20)
-                                            .padding(.bottom, 20)
+                                            .padding(.bottom, 10)
                                     }
                                     
                                 }
@@ -211,14 +209,6 @@ public struct MapView: View {
                     subTitle: "You have been located in \(locationProvider.activeRoom.name)"
                 )
             }
-//            .toast(isPresenting: $fileHandler.isLoadingComplete, duration: 5.0) {
-//                AlertToast(
-//                    displayMode: .hud,
-//                    type: .systemImage("exclamationmark.triangle", .red),
-//                    title: "Error Connection",
-//                    subTitle: "You have 2/more Floor but no connections."
-//                )
-//            }
             .toast(isPresenting: $locationProvider.showChangeFloorToast, duration: 5.0) {
                 AlertToast(
                     displayMode: .hud,
