@@ -26,7 +26,7 @@ class ARSCNDelegate: NSObject, LocationSubject, ARSCNViewDelegate {
     func setSceneView(_ scnV: ARSCNView) {
         sceneView = scnV
     }
-    
+
     nonisolated func renderer(_ renderer: SCNSceneRenderer, didAdd node: SCNNode, for anchor: ARAnchor) {
         if let imageAnchor = anchor as? ARImageAnchor {
             DispatchQueue.main.async { [weak self] in
@@ -37,7 +37,7 @@ class ARSCNDelegate: NSObject, LocationSubject, ARSCNViewDelegate {
             }
         }
     }
-    
+
     nonisolated func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
 
         DispatchQueue.main.async {
