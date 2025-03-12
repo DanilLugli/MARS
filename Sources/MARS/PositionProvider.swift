@@ -17,7 +17,6 @@ import CoreMotion
 public class PositionProvider: PositionSubject, LocationObserver, @preconcurrency Hashable, ObservableObject, PositionObserver {
 
     // MARK: - Proprietà
-
     public var id: UUID = UUID()
     public let building: Building
 
