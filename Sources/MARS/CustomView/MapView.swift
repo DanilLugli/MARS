@@ -9,7 +9,7 @@ public struct MapView: View {
     @ObservedObject private var fileHandler = FileHandler.shared 
     
     @State private var hasStarted: Bool = false
-    @State private var debug: Bool = false
+    @State private var debug: Bool = true
     
     @State private var scale: CGFloat = 1.0
     
@@ -25,8 +25,6 @@ public struct MapView: View {
             ZStack {
             
                 locationProvider.arSCNView
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea()
                 
                 VStack{
                     if !locationProvider.markerFounded{

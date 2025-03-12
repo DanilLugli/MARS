@@ -36,6 +36,8 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     var firstLocalization: Bool = false
     var reLocalizingFrameCount = 0
     
+    
+    
     @Published var position: simd_float4x4 = simd_float4x4(0)
     @Published var trackingState: String = ""
     @Published var nodeContainedIn: String = ""
@@ -67,15 +69,29 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     var lastFloorPosition: simd_float4x4 = simd_float4x4(1)
     var lastFloorAngle: Float = 0.0
 
+    private var worldMapConfigurationHandler: ((ARWorldTrackingConfiguration) -> Void)
+    
     // MARK: - Inizializzazione
 
-    public init(data: URL, arSCNView: ARSCNView) {
+
+    public init(
+        data: URL,
+        arSCNView: ARSCNView,
+        worldMapConfigurationHandler: ((ARWorldTrackingConfiguration) -> Void)? = nil
+    ) {
         self.positionObservers = []
         self.markers = []
         
-        self.arSCNView = ARSCNViewContainer(delegate: self.delegate)
+        self.arSCNView = ARSCNViewContainer(arSCNView: arSCNView, delegate: self.delegate)
         self.scnFloorView = SCNViewContainer()
         self.scnRoomView = SCNViewContainer()
+        
+        // Imposta la closure passata dall'utente o usa quella di default
+        self.worldMapConfigurationHandler = worldMapConfigurationHandler ?? { config in
+            config.planeDetection = [.horizontal, .vertical]
+            config.environmentTexturing = .automatic
+            config.isCollaborationEnabled = true
+        }
 
         do {
             self.building = try FileHandler.loadBuildings(from: data)
@@ -91,29 +107,31 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
 
     /// Configura la sessione AR per il tracciamento delle immagini
     public func start() {
-        ARSessionManager.shared.configureForImageTracking(with: self.building.detectionImages)
+        self.arSCNView.getSessionManager().activate()
+        if building.detectionImages.isEmpty {
+        } else {
+            print("DEBUG: \(building.detectionImages.count) immagini caricate nel building.")
+        }
+        self.arSCNView.getSessionManager().addImageTrackingToConfiguration(with: self.building.detectionImages)
     }
+    
     
     // MARK: - Aggiornamento della Posizione e Tracking
     @MainActor
     public func onLocationUpdate(_ newPosition: simd_float4x4, _ newTrackingState: String) {
         switch switchingRoom {
         case false:
-            
-            if showManagerCamera{
-                ARSessionManager.shared.coachingOverlay.setActive(false, animated: true)
+            if showManagerCamera {
+                self.arSCNView.getSessionManager().coachingOverlay.setActive(false, animated: true)
                 self.showOverlay = true
                 showManagerCamera = false
-
             }
             
             self.position = newPosition
             self.trackingState = newTrackingState
             self.roomMatrixActive = self.activeRoom.name
             
-            
             reLocalizingFrameCount = 0
-            
             updateTrackingState(newState: newTrackingState)
             
             scnRoomView.updatePosition(self.position, nil, floor: self.activeFloor)
@@ -122,10 +140,10 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
                 self.currentFloorPosition = self.scnFloorView.updatePosition(
                     self.position,
                     self.activeFloor.associationMatrix[self.activeRoom.name],
-                    floor: self.activeFloor)
+                    floor: self.activeFloor
+                )
                 
                 self.updateCameraPosition(currentFloorPosition)
-                
             }
             
             countNormal += 1
@@ -151,7 +169,6 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             }
             
         case true:
-
             countNormal = 0
             lastKnownPosition = position
             position = newPosition
@@ -165,29 +182,25 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
                 
                 if reLocalizingFrameCount >= 120 {
                     showManagerCamera = true
-                    ARSessionManager.shared.coachingOverlay.setActive(true, animated: true)
+                    self.arSCNView.getSessionManager().coachingOverlay.setActive(true, animated: true)
                     self.showOverlay = true
                 }
                 
                 self.scnFloorView.updatePosition(self.positionOffTracking, nil, floor: self.activeFloor)
-                
                 self.updateCameraPosition(self.positionOffTracking)
                 self.currentFloorPosition = self.positionOffTracking
                 
                 readyToChange = true
-                
             } else {
                 reLocalizingFrameCount = 0
             }
 
-            if readyToChange {
-                switchingRoom = (newTrackingState != "Normal")
-                changeStateBool = !switchingRoom
+            if readyToChange && newTrackingState != "Normal" {
+                switchingRoom = true
+                changeStateBool = false
+            } else {
+                switchingRoom = false
             }
-            
-
-        default:
-            break
         }
     }
     
@@ -205,8 +218,16 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         }
     }
     
+    /// Metodo aggiornato per usare la closure di configurazione
+    func updateWorldMapConfiguration() {
+        self.arSCNView.getSessionManager().addWorldMapToConfiguration(with: self.activeRoom) { config in
+            self.worldMapConfigurationHandler(config)
+        }
+    }
+    
     /// Imposta la room riconosciuta e aggiorna le viste corrispondenti
     func roomRecognized(_ room: Room) {
+        
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.activeFloor = room.parentFloor ?? self.building.floors.first ?? Floor()
@@ -220,9 +241,11 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             self.scnFloorView.loadPlanimetry(scene: self.activeFloor, roomsNode: roomNodes, borders: true, nameCaller: self.activeFloor.name)
             self.scnRoomView.loadPlanimetry(scene: self.activeRoom, roomsNode: nil, borders: true, nameCaller: self.activeRoom.name)
             
+            self.updateWorldMapConfiguration()
             addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
             
-            self.arSCNView.startARSCNView(with: self.activeRoom, for: false, from: self.building)
+            self.arSCNView.getSessionManager().addWorldMapToConfiguration(with: self.activeRoom)
+            
             self.markerFounded = true
             firstLocalization = true
             self.showMarkerFoundedToast = true
@@ -231,6 +254,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     
     /// Controlla se il nodo di posizione appartiene ad una nuova room
     func checkSwitchRoom(state: Bool) {
+        print("CHECK SWITCH ROOM")
         guard let posFloorNode = scnFloorView.scnView.scene?.rootNode.childNode(withName: "POS_FLOOR", recursively: true) else {
             return
         }
@@ -252,27 +276,24 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
                 self.roomMatrixActive = prevRoom.name
             }
             
-            if let newRoom = activeFloor.getRoom(byName: nextRoomName) {
-                self.activeRoom = newRoom
-            } else {
-                self.activeRoom = prevRoom
-            }
-            
-            ARSessionManager.shared.configureForWorldMap(with: activeRoom)
+            self.activeRoom = activeFloor.getRoom(byName: nextRoomName) ?? prevRoom
+
+            // Usare il session manager per aggiornare la world map
+            self.arSCNView.getSessionManager().addWorldMapToConfiguration(with: activeRoom)
             
             let roomNames = activeFloor.rooms.map { $0.name }
             scnRoomView.loadPlanimetry(scene: activeRoom, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
-            
         } else {
             print("No change Room: \(self.nodeContainedIn)")
         }
     }
-    
-    /// Verifica se bisogna passare ad un nuovo floor, in base all'altezza del nodo POS_ROOM
+
+    /// Controlla se la posizione attuale richiede un cambio di piano
     func checkSwitchFloor() {
         guard let posRoomNode = scnRoomView.scnView.scene?.rootNode.childNodes.first(where: { $0.name == "POS_ROOM" }) else {
             return
         }
+        
         print("CHECK SWITCH FLOOR")
         for connection in self.activeRoom.connections {
             print("Y ROOM: \(posRoomNode.simdWorldTransform.columns.3.y)\n")
@@ -301,31 +322,31 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
                     scnFloorView.loadPlanimetry(scene: activeFloor, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
                     addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
 
-                    ARSessionManager.shared.configureForWorldMap(with: activeRoom)
+                    // Usare il session manager per aggiornare la world map
+                    self.arSCNView.getSessionManager().addWorldMapToConfiguration(with: activeRoom)
                     showChangeFloorToast = true
-                    ARSessionManager.shared.coachingOverlay.setActive(true, animated: true)
+
+                    // Mostrare l'overlay della coaching per la guida utente
+                    self.arSCNView.getSessionManager().coachingOverlay.setActive(true, animated: true)
                     self.showOverlay = true
-                    
-                    
                 }
             }
         }
     }
-    
-    private var previousTrackingState: String = ""
 
+    /// Aggiorna lo stato del tracking per gestire le transizioni tra le modalità
     func updateTrackingState(newState: String) {
         if previousTrackingState == "Re-Localizing..." && newState == "Normal" {
             firstLocalization = false
-            ARSessionManager.shared.coachingOverlay.setActive(false, animated: true)
+            self.arSCNView.getSessionManager().coachingOverlay.setActive(false, animated: true)
             self.showOverlay = false
         }
         
         // Aggiorna lo stato precedente per il prossimo confronto
         previousTrackingState = newState
-        
     }
     
+    private var previousTrackingState: String = ""
     // MARK: - Operazioni su Matrici e Trasformazioni
 
     /// Restituisce true se la distanza in piano XZ tra due trasformazioni è >= 1 metro
