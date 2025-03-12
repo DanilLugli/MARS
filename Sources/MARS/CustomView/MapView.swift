@@ -31,14 +31,14 @@ public struct MapView: View {
                 VStack{
                     if !locationProvider.markerFounded{
                         HStack {
-                            Image(systemName: "photo")
+                            Image(systemName: "camera.viewfinder")
                                 .bold()
-                                .font(.system(size: 18))
-                                .foregroundColor(.black)
+                                .font(.system(size: 20))
+                                .foregroundColor(.blue)
                             
                             Text("Scan the Marker")
                                 .font(.system(size: 18, weight: .bold, design: .default))
-                                .foregroundColor(.black)
+                                .foregroundColor(Color.blue.opacity(0.6))
                         }
                         .padding()
                         .background(Color.white)
@@ -49,14 +49,14 @@ public struct MapView: View {
                     }
                     if locationProvider.firstLocalization{
                         HStack {
-                            Image(systemName: "mappin.and.ellipse")
+                            Image(systemName: "figure.walk")
                                 .bold()
-                                .font(.system(size: 18))
-                                .foregroundColor(.black)
+                                .font(.system(size: 20))
+                                .foregroundColor(.red)
                             
                             Text("Re-Localization")
                                 .font(.system(size: 18, weight: .bold, design: .default))
-                                .foregroundColor(.black)
+                                .foregroundColor(Color.red.opacity(0.6))
                         }
                         .padding()
                         .background(Color.white)
@@ -204,7 +204,7 @@ public struct MapView: View {
             }.toast(isPresenting: $locationProvider.showMarkerFoundedToast, duration: 5.0) {
                 AlertToast(
                     displayMode: .hud,
-                    type: .systemImage("location.fill", .green),
+                    type: .systemImage("photo.badge.checkmark", .green),
                     title: "Marker Found",
                     subTitle: "You have been located in \(locationProvider.activeRoom.name)"
                 )
