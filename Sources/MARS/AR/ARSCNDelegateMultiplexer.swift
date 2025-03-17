@@ -27,7 +27,6 @@ public class ARSCNDelegateMultiplexer: NSObject, ARSCNViewDelegate {
     
     /// Add a delegate to receive AR callbacks
     public func addDelegate(_ delegate: ARSCNViewDelegate) {
-        // Check if the delegate already exists to avoid duplicates
         if !delegates.contains(where: { $0.delegate === delegate }) {
             delegates.append(WeakDelegate(delegate))
         }

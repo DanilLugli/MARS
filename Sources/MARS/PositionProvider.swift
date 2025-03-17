@@ -64,6 +64,9 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     var offMatrix: simd_float4x4 = simd_float4x4(1.0)
     var cont: Int = 0
     
+    // In PositionProvider.swift
+    public var referenceMarkersByLocation: [String: Set<ARReferenceImage>] = [:]
+    
     var positionOffTracking: simd_float4x4 = simd_float4x4(1)
     var floorNodePosition: SCNNode = SCNNode()
     var lastFloorPosition: simd_float4x4 = simd_float4x4(1)
@@ -77,12 +80,14 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     public init(
         data: URL,
         arSCNView: ARSCNView,
+        referenceMarkersByLocation: [String: Set<ARReferenceImage>] = [:],
         worldMapConfigurationHandler: ((ARWorldTrackingConfiguration) -> Void)? = nil
     ) {
         self.positionObservers = []
         self.markers = []
+        self.referenceMarkersByLocation = referenceMarkersByLocation
         
-        self.arSCNView = ARSCNViewContainer(arSCNView: arSCNView, delegate: self.delegate)
+        self.arSCNView = ARSCNViewContainer(arSCNView: arSCNView, delegate: delegateMultiplexer)
         self.scnFloorView = SCNViewContainer()
         self.scnRoomView = SCNViewContainer()
         
@@ -137,6 +142,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             scnRoomView.updatePosition(self.position, nil, floor: self.activeFloor)
             
             if !changeStateBool {
+                print("AGGIORNO FLOOR POS")
                 self.currentFloorPosition = self.scnFloorView.updatePosition(
                     self.position,
                     self.activeFloor.associationMatrix[self.activeRoom.name],
@@ -220,9 +226,14 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     
     /// Metodo aggiornato per usare la closure di configurazione
     func updateWorldMapConfiguration() {
-        self.arSCNView.getSessionManager().addWorldMapToConfiguration(with: self.activeRoom) { config in
-            self.worldMapConfigurationHandler(config)
-        }
+        let currentRoom = self.activeRoom.name
+        let specificMarkers = self.referenceMarkersByLocation[currentRoom] ?? Set<ARReferenceImage>()
+        
+        self.arSCNView.getSessionManager().addWorldMapToConfiguration(
+            with: self.activeRoom,
+            detectionImages: specificMarkers,
+            configure: self.worldMapConfigurationHandler
+        )
     }
     
     /// Imposta la room riconosciuta e aggiorna le viste corrispondenti
@@ -244,7 +255,16 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             self.updateWorldMapConfiguration()
             addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
             
-            self.arSCNView.getSessionManager().addWorldMapToConfiguration(with: self.activeRoom)
+            // Aggiorna i marker e la configurazione
+            let currentRoom = self.activeRoom.name
+            let specificMarkers = self.referenceMarkersByLocation[currentRoom] ?? Set<ARReferenceImage>()
+            
+            
+            self.arSCNView.getSessionManager().addWorldMapToConfiguration(
+                        with: self.activeRoom,
+                        detectionImages: specificMarkers,
+                        configure: self.worldMapConfigurationHandler
+                    )
             
             self.markerFounded = true
             firstLocalization = true
@@ -278,8 +298,18 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
             
             self.activeRoom = activeFloor.getRoom(byName: nextRoomName) ?? prevRoom
 
+            // Aggiorna i marker e la configurazione
+            let currentRoom = self.activeRoom.name
+            let specificMarkers = self.referenceMarkersByLocation[currentRoom] ?? Set<ARReferenceImage>()
+            
             // Usare il session manager per aggiornare la world map
-            self.arSCNView.getSessionManager().addWorldMapToConfiguration(with: activeRoom)
+            self.arSCNView.getSessionManager().addWorldMapToConfiguration(
+                with: activeRoom,
+                detectionImages: specificMarkers,
+                configure: self.worldMapConfigurationHandler
+            )
+            
+            
             
             let roomNames = activeFloor.rooms.map { $0.name }
             scnRoomView.loadPlanimetry(scene: activeRoom, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
@@ -322,6 +352,18 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
                     scnFloorView.loadPlanimetry(scene: activeFloor, roomsNode: roomNames, borders: true, nameCaller: activeRoom.name)
                     addRoomNodesToScene(floor: self.activeFloor, scene: self.scnFloorView.scnView.scene!)
 
+                    // Aggiorna i marker e la configurazione
+                    let currentRoom = self.activeRoom.name
+                    let specificMarkers = self.referenceMarkersByLocation[currentRoom] ?? Set<ARReferenceImage>()
+                    
+                    // Usare il session manager per aggiornare la world map
+                    self.arSCNView.getSessionManager().addWorldMapToConfiguration(
+                        with: activeRoom,
+                        detectionImages: specificMarkers,
+                        configure: self.worldMapConfigurationHandler
+                    )
+                    
+                    
                     // Usare il session manager per aggiornare la world map
                     self.arSCNView.getSessionManager().addWorldMapToConfiguration(with: activeRoom)
                     showChangeFloorToast = true
@@ -627,4 +669,9 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
+}
+
+struct LocationKey: Hashable {
+    let first: String
+    let second: String
 }

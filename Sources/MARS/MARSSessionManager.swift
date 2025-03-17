@@ -13,11 +13,11 @@ import Foundation
 @available(iOS 16.0, *)
 public class MARSSessionManager {
     
-    private var arSCNView: ARSCNView?
+    var arSCNView: ARSCNView?
     
-    private let delegateMultiplexer: ARSCNDelegateMultiplexer
+    let delegateMultiplexer: ARSCNDelegateMultiplexer
     
-    private let marsDelegate: ARSCNDelegate
+    let marsDelegate: ARSCNDelegate
     
     @MainActor
     public lazy var coachingOverlay: ARCoachingOverlayView = {
@@ -25,7 +25,7 @@ public class MARSSessionManager {
         return overlay
     }()
     
-    private var isActive: Bool = false
+    var isActive: Bool = false
     
     @MainActor
     public init(arSCNView: ARSCNView, marsDelegate: ARSCNDelegate) {
@@ -89,6 +89,7 @@ public class MARSSessionManager {
     @MainActor
     public func addWorldMapToConfiguration(
         with room: Room,
+        detectionImages: Set<ARReferenceImage>? = nil,
         configure: ((ARWorldTrackingConfiguration) -> Void)? = nil
     ) {
         guard let arView = arSCNView, isActive else {
@@ -98,10 +99,15 @@ public class MARSSessionManager {
         var currentConfig = arView.session.configuration as? ARWorldTrackingConfiguration
                           ?? ARWorldTrackingConfiguration()
 
-        currentConfig.detectionImages = nil
         currentConfig.initialWorldMap = room.arWorldMap
+        
+        if let detectionImages = detectionImages, !detectionImages.isEmpty {
+            currentConfig.detectionImages = detectionImages
+            currentConfig.maximumNumberOfTrackedImages = detectionImages.count
+        } else {
+            currentConfig.detectionImages = nil
+        }
 
-        // Applica la closure di configurazione se fornita
         configure?(currentConfig)
 
         arView.session.pause()
