@@ -37,7 +37,6 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
     var reLocalizingFrameCount = 0
     
     
-    
     @Published var position: simd_float4x4 = simd_float4x4(0)
     @Published var trackingState: String = ""
     @Published var nodeContainedIn: String = ""
