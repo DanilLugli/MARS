@@ -86,7 +86,7 @@ public class PositionProvider: PositionSubject, LocationObserver, @preconcurrenc
         self.markers = []
         self.referenceMarkersByLocation = referenceMarkersByLocation
         
-        self.arSCNView = ARSCNViewContainer(arSCNView: arSCNView, delegate: delegateMultiplexer)
+        self.arSCNView = ARSCNViewContainer(arSCNView: arSCNView, delegate: self.delegate)
         self.scnFloorView = SCNViewContainer()
         self.scnRoomView = SCNViewContainer()
         

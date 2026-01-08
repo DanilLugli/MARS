@@ -8,7 +8,7 @@
 
 import Foundation
 import ARKit
-import SwiftUICore
+import SwiftUI
 
 @available(iOS 16.0, *)
 open class ARSCNDelegate: NSObject, LocationSubject, ARSCNViewDelegate {

@@ -7,7 +7,7 @@
 
 import Foundation
 import ARKit
-import SwiftUICore
+import SwiftUI
 
 /// A multiplexer that forwards ARSCNViewDelegate callbacks to multiple delegates
 @available(iOS 16.0, *)
